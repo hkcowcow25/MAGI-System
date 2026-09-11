@@ -47,9 +47,11 @@ export function createOpenAIAdapter(): ProviderAdapter {
         max_tokens: req.maxOutputTokens,
         temperature: req.temperature,
       });
-      const text = chat.choices[0]?.message?.content ?? "";
+      const choice = chat.choices[0];
+      const text = choice?.message?.content ?? "";
       return {
         text,
+        finish_reason: choice?.finish_reason ?? null,
         usage: chat.usage
           ? {
               prompt_tokens: chat.usage.prompt_tokens,
