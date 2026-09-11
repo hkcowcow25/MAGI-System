@@ -36,6 +36,13 @@ import {
   type ConnectionTestResult,
 } from "@/lib/decision/test-connection";
 
+export {
+  listHistory,
+  getHistoryDetail,
+  exportHistoryJson,
+  deleteHistory,
+} from "@/lib/history/web-actions";
+
 export type DeliberateSuccess = MagiDeliberationResult & {
   ok: true;
   mode: "verdict";
@@ -146,7 +153,7 @@ export async function deliberate(
   }
 
   try {
-    const result = await runMagiEngine(trimmed, mode);
+    const result = await runMagiEngine(trimmed, mode, { source: "web" });
     if (result.mode === "council") {
       return {
         ok: true,
