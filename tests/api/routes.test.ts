@@ -38,7 +38,7 @@ describe("GET /v1/models", () => {
     expect(res.status).toBe(401);
   });
 
-  it("lists magi-verdict with valid bearer", async () => {
+  it("lists magi-verdict and magi-council with valid bearer", async () => {
     const res = await models(
       req("http://localhost/v1/models", {
         headers: { authorization: "Bearer test-secret" },
@@ -46,7 +46,9 @@ describe("GET /v1/models", () => {
     );
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.data[0].id).toBe("magi-verdict");
+    const ids = json.data.map((m: { id: string }) => m.id);
+    expect(ids).toContain("magi-verdict");
+    expect(ids).toContain("magi-council");
   });
 });
 
@@ -135,5 +137,25 @@ describe("POST /v1/chat/completions", () => {
       }),
     );
     expect(res.status).toBe(401);
+  });
+
+  it("returns magi-council mock deliberation", async () => {
+    const res = await chat(
+      req("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: { authorization: "Bearer test-secret" },
+        body: {
+          model: "magi-council",
+          stream: false,
+          messages: [{ role: "user", content: "How should we plan the launch?" }],
+        },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.model).toBe("magi-council");
+    expect(json.magi.mode).toBe("council");
+    expect(json.choices[0].message.content).toContain("MAGI Council");
+    expect(json.choices[0].message.content).toContain("Minority Views");
   });
 });
