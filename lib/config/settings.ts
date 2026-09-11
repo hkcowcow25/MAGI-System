@@ -2,12 +2,20 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { MagiId, MagiMode } from "@/types/magi";
 import type { ProviderKind } from "@/lib/config/types";
+import {
+  PERSONA_IDENTITY,
+  PROMPT_MIGRATION_VERSION,
+  looksLikeCouncilSchema,
+  looksLikeVerdictSchema,
+  normalizePersonaDescription,
+} from "@/lib/prompts";
 
-/** Non-secret per-persona overrides persisted to disk. Never stores API keys. */
 export interface PersonaSettingsOverride {
   provider?: ProviderKind;
   model?: string;
   baseUrl?: string;
+  personaDescription?: string;
+  /** @deprecated alias for personaDescription */
   systemPrompt?: string;
   timeoutMs?: number;
   maxOutputTokens?: number;
@@ -21,12 +29,12 @@ export interface SummarizerSettings {
   timeoutMs?: number;
   maxOutputTokens?: number;
   temperature?: number;
-  /** When false/undefined and model unset → extractive synthesis. */
   enabled?: boolean;
 }
 
 export interface MagiSettingsFile {
   version: 1;
+  promptMigrationVersion?: number;
   personas?: Partial<Record<MagiId, PersonaSettingsOverride>>;
   summarizer?: SummarizerSettings;
   defaultMode?: MagiMode;
@@ -75,13 +83,21 @@ function sanitizePersona(raw: unknown): PersonaSettingsOverride | undefined {
   if (isProvider(o.provider)) out.provider = o.provider;
   const model = asNonEmptyString(o.model);
   if (model) out.model = model;
-  // Allow empty string to clear baseUrl override → treat missing only
   if (typeof o.baseUrl === "string") {
     const b = o.baseUrl.trim();
     if (b) out.baseUrl = b;
   }
-  if (typeof o.systemPrompt === "string" && o.systemPrompt.trim()) {
-    out.systemPrompt = o.systemPrompt;
+  const rawDesc =
+    (typeof o.personaDescription === "string" && o.personaDescription.trim()
+      ? o.personaDescription
+      : undefined) ??
+    (typeof o.systemPrompt === "string" && o.systemPrompt.trim()
+      ? o.systemPrompt
+      : undefined);
+  if (rawDesc) {
+    const normalized = normalizePersonaDescription(rawDesc, undefined);
+    out.personaDescription = normalized;
+    out.systemPrompt = normalized;
   }
   const timeoutMs = asPositiveInt(o.timeoutMs);
   if (timeoutMs !== undefined) out.timeoutMs = timeoutMs;
@@ -89,7 +105,6 @@ function sanitizePersona(raw: unknown): PersonaSettingsOverride | undefined {
   if (maxOutputTokens !== undefined) out.maxOutputTokens = maxOutputTokens;
   const temperature = asFiniteNumber(o.temperature);
   if (temperature !== undefined) out.temperature = temperature;
-  // Explicitly drop any apiKey / secret fields if present in file
   return out;
 }
 
@@ -114,9 +129,7 @@ function sanitizeSummarizer(raw: unknown): SummarizerSettings | undefined {
 }
 
 export function sanitizeSettings(raw: unknown): MagiSettingsFile {
-  if (!raw || typeof raw !== "object") {
-    return { version: 1 };
-  }
+  if (!raw || typeof raw !== "object") return { version: 1 };
   const o = raw as Record<string, unknown>;
   const personas: MagiSettingsFile["personas"] = {};
   if (o.personas && typeof o.personas === "object") {
@@ -131,17 +144,85 @@ export function sanitizeSettings(raw: unknown): MagiSettingsFile {
     o.defaultMode === "council" || o.defaultMode === "verdict"
       ? o.defaultMode
       : undefined;
+  const promptMigrationVersion =
+    typeof o.promptMigrationVersion === "number" &&
+    Number.isFinite(o.promptMigrationVersion)
+      ? Math.floor(o.promptMigrationVersion)
+      : undefined;
   return {
     version: 1,
+    ...(promptMigrationVersion !== undefined
+      ? { promptMigrationVersion }
+      : {}),
     ...(Object.keys(personas).length ? { personas } : {}),
     ...(summarizer ? { summarizer } : {}),
     ...(defaultMode ? { defaultMode } : {}),
   };
 }
 
-/** In-memory cache so hot paths avoid repeated disk reads within a process. */
-let cache: { path: string; mtimeMs: number; data: MagiSettingsFile } | null =
-  null;
+export function settingsNeedPromptMigration(file: MagiSettingsFile): boolean {
+  if ((file.promptMigrationVersion ?? 0) >= PROMPT_MIGRATION_VERSION) return false;
+  for (const id of PERSONA_IDS) {
+    const p = file.personas?.[id];
+    if (!p) continue;
+    const raw = p.systemPrompt ?? p.personaDescription ?? "";
+    if (p.personaDescription && !p.systemPrompt) continue;
+    if (
+      looksLikeVerdictSchema(raw) ||
+      looksLikeCouncilSchema(raw) ||
+      (p.systemPrompt && !p.personaDescription)
+    ) {
+      return true;
+    }
+  }
+  return (
+    (file.promptMigrationVersion ?? 0) < PROMPT_MIGRATION_VERSION &&
+    Boolean(file.personas && Object.keys(file.personas).length)
+  );
+}
+
+export function migrateSettingsPrompts(file: MagiSettingsFile): MagiSettingsFile {
+  const personas: MagiSettingsFile["personas"] = {};
+  for (const id of PERSONA_IDS) {
+    const p = file.personas?.[id];
+    if (!p) continue;
+    const next: PersonaSettingsOverride = { ...p };
+    const raw = p.personaDescription ?? p.systemPrompt;
+    if (raw?.trim()) {
+      const identity = normalizePersonaDescription(raw, id);
+      next.personaDescription = identity;
+      next.systemPrompt = identity;
+    }
+    personas[id] = next;
+  }
+  return {
+    ...file,
+    version: 1,
+    promptMigrationVersion: PROMPT_MIGRATION_VERSION,
+    ...(Object.keys(personas).length ? { personas } : { personas: file.personas }),
+  };
+}
+
+export function resetPersonaIdentity(
+  file: MagiSettingsFile,
+  id: MagiId,
+): MagiSettingsFile {
+  const current = file.personas?.[id] ?? {};
+  const identity = PERSONA_IDENTITY[id];
+  return {
+    ...file,
+    personas: {
+      ...(file.personas ?? {}),
+      [id]: {
+        ...current,
+        personaDescription: identity,
+        systemPrompt: identity,
+      },
+    },
+  };
+}
+
+let cache: { path: string; mtimeMs: number; data: MagiSettingsFile } | null = null;
 
 export function clearSettingsCache(): void {
   cache = null;
@@ -151,9 +232,24 @@ export async function loadSettingsFile(): Promise<MagiSettingsFile> {
   const settingsPath = getSettingsPath();
   try {
     const buf = await readFile(settingsPath);
-    const statMtime = Date.now(); // content-based; we always re-parse
+    const statMtime = Date.now();
     const parsed = JSON.parse(buf.toString("utf8")) as unknown;
-    const data = sanitizeSettings(parsed);
+    let data = sanitizeSettings(parsed);
+    if (
+      (data.promptMigrationVersion ?? 0) < PROMPT_MIGRATION_VERSION &&
+      data.personas &&
+      Object.keys(data.personas).length > 0
+    ) {
+      const migrated = migrateSettingsPrompts(data);
+      try {
+        data = await saveSettingsFile(migrated);
+      } catch {
+        data = migrated;
+        cache = { path: settingsPath, mtimeMs: statMtime, data };
+        return data;
+      }
+      return data;
+    }
     cache = { path: settingsPath, mtimeMs: statMtime, data };
     return data;
   } catch (err) {
@@ -172,9 +268,17 @@ export async function saveSettingsFile(
 ): Promise<MagiSettingsFile> {
   const settingsPath = getSettingsPath();
   const clean = sanitizeSettings(input);
-  // Strip secrets again — defensive
+  if (
+    input.promptMigrationVersion !== undefined &&
+    clean.promptMigrationVersion === undefined
+  ) {
+    clean.promptMigrationVersion = input.promptMigrationVersion;
+  }
   const json = JSON.stringify(clean, null, 2) + "\n";
-  if (/api[_-]?key|secret|password|token/i.test(json) && /"(apiKey|api_key|secret|password|token)"\s*:/i.test(json)) {
+  if (
+    /api[_-]?key|secret|password|token/i.test(json) &&
+    /"(apiKey|api_key|secret|password|token)"\s*:/i.test(json)
+  ) {
     throw new Error("Refusing to persist secret-like fields in settings file");
   }
   await mkdir(path.dirname(settingsPath), { recursive: true });
@@ -183,10 +287,6 @@ export async function saveSettingsFile(
   return clean;
 }
 
-/**
- * Merge incoming persona overrides into current file (non-secrets only).
- * Does not accept or store API keys.
- */
 export async function updateSettingsFromClient(input: {
   personas?: Partial<Record<MagiId, PersonaSettingsOverride>>;
   summarizer?: SummarizerSettings | null;
@@ -195,23 +295,23 @@ export async function updateSettingsFromClient(input: {
   const current = await loadSettingsFile();
   const next: MagiSettingsFile = {
     version: 1,
+    promptMigrationVersion:
+      current.promptMigrationVersion ?? PROMPT_MIGRATION_VERSION,
     personas: { ...(current.personas ?? {}) },
     summarizer: current.summarizer,
     defaultMode: current.defaultMode,
   };
-
   if (input.personas) {
     for (const id of PERSONA_IDS) {
       const patch = input.personas[id];
       if (!patch) continue;
       const sanitized = sanitizePersona(patch) ?? {};
-      next.personas![id] = {
-        ...(next.personas![id] ?? {}),
-        ...sanitized,
-      };
+      if (sanitized.systemPrompt && !sanitized.personaDescription) {
+        sanitized.personaDescription = sanitized.systemPrompt;
+      }
+      next.personas![id] = { ...(next.personas![id] ?? {}), ...sanitized };
     }
   }
-
   if (input.summarizer === null) {
     delete next.summarizer;
   } else if (input.summarizer) {
@@ -220,11 +320,24 @@ export async function updateSettingsFromClient(input: {
       ...(sanitizeSummarizer(input.summarizer) ?? {}),
     };
   }
-
   if (input.defaultMode === "verdict" || input.defaultMode === "council") {
     next.defaultMode = input.defaultMode;
   }
+  return saveSettingsFile(next);
+}
 
+export async function applyPromptMigration(): Promise<MagiSettingsFile> {
+  const current = await loadSettingsFile();
+  return saveSettingsFile(migrateSettingsPrompts(current));
+}
+
+export async function resetPersonaDescription(
+  id: MagiId,
+): Promise<MagiSettingsFile> {
+  const current = await loadSettingsFile();
+  const next = resetPersonaIdentity(current, id);
+  next.promptMigrationVersion =
+    next.promptMigrationVersion ?? PROMPT_MIGRATION_VERSION;
   return saveSettingsFile(next);
 }
 
