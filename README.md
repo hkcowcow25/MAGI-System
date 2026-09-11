@@ -68,6 +68,10 @@ docker compose up
 
 ## Environment Variables
 
+See `.env.local.example` for the full per-persona provider matrix (`MELCHIOR_*`, `BALTHASAR_*`, `CASPER_*`) plus `MAGI_API_KEY` / `MAGI_MOCK_MODE`.
+
+### Legacy / common variables
+
 | Variable            | Description                     | Default            |
 | ------------------- | ------------------------------- | ------------------ |
 | `OPENAI_API_KEY`    | OpenAI API key (MELCHIOR-1)     | —                  |
@@ -85,6 +89,30 @@ docker compose up
 3. Each unit stops flickering and shows its result as soon as it finishes
 4. The final verdict is determined by majority vote once all three complete
 5. Click any unit to read its detailed reasoning
+
+## Fork MVP (OpenAI-compatible API)
+
+This fork adds a shared MAGI decision engine, per-persona provider configuration, and an OpenAI-compatible HTTP API for clients such as SillyTavern.
+
+| Endpoint | Auth | Notes |
+| -------- | ---- | ----- |
+| `GET /healthz` | none | Liveness only |
+| `GET /v1/models` | Bearer `MAGI_API_KEY` | Lists `magi-verdict` |
+| `POST /v1/chat/completions` | Bearer `MAGI_API_KEY` | `stream=false` only; one request = three-unit deliberation |
+
+- Technical unit failures use `unitStatus: "error"` and overall **INCOMPLETE** — never a fake **ABSTAIN** vote.
+- Set `MAGI_MOCK_MODE=true` for deterministic local/dev responses without keys. Production must not silently mock when keys are missing.
+- See `.env.local.example`, `docs/DEPLOY-SYNOLOGY.md`, `docs/SILLYTAVERN.md`, and `scripts/test-api.ps1`.
+
+### Tests
+
+```bash
+npm test
+```
+
+### Attribution
+
+Upstream project: **[hirakujira/MAGI-System](https://github.com/hirakujira/MAGI-System)** (also historically linked as hirakujira/MAGI). This fork retains credit to the original author.
 
 ## Copyright Notice
 
