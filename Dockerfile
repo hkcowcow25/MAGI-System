@@ -5,15 +5,20 @@ COPY package.json ./
 # package-lock.json is shipped as gzip+base64 parts (MCP size limits);
 # reassemble then npm ci for reproducible installs including vitest.
 COPY package-lock.json.gz.b64.part* ./
-RUN cat package-lock.json.gz.b64.part* | base64 -d | gunzip > package-lock.json \
-  && rm -f package-lock.json.gz.b64.part* \
-  && npm ci
+RUN set -eux; \
+  if ls package-lock.json.gz.b64.part* >/dev/null 2>&1; then \
+    cat package-lock.json.gz.b64.part* | base64 -d | gunzip > package-lock.json; \
+    rm -f package-lock.json.gz.b64.part*; \
+    npm ci; \
+  else \
+    echo "WARN: lock parts missing; falling back to npm install"; \
+    npm install; \
+  fi
 
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Drop any leftover lock fragments from the build context (not needed at runtime)
 RUN rm -f package-lock.json.gz.b64 package-lock.json.gz.b64.part* \
   && npm run build
 
