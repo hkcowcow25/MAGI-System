@@ -27,7 +27,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
-# Default settings path lives under /data (compose volume MAGI_DATA_VOLUME)
+# Settings + history SQLite live under /data (compose volume MAGI_DATA_VOLUME)
 ENV MAGI_DATA_DIR=/data
 
 RUN addgroup --system --gid 1001 nodejs \
@@ -38,6 +38,8 @@ RUN addgroup --system --gid 1001 nodejs \
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+# sql.js is serverExternalPackages — copy into standalone image (ASM, no wasm/native).
+COPY --from=builder /app/node_modules/sql.js ./node_modules/sql.js
 
 USER nextjs
 EXPOSE 3000
