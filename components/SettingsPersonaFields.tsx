@@ -20,6 +20,9 @@ export type SettingsPersonaFieldsProps = {
   testing: MagiId | null;
   testMsg: Partial<Record<MagiId, string>>;
   onTest: (id: MagiId) => void;
+  onResetPersona?: (id: MagiId) => void;
+  onApplyPromptMigration?: () => void;
+  migrating?: boolean;
 };
 
 export function SettingsPersonaFields({
@@ -29,6 +32,9 @@ export function SettingsPersonaFields({
   testing,
   testMsg,
   onTest,
+  onResetPersona,
+  onApplyPromptMigration,
+  migrating,
 }: SettingsPersonaFieldsProps) {
   return (
     <>
@@ -54,6 +60,24 @@ export function SettingsPersonaFields({
                   議會（magi-council）
                 </button>
               </div>
+            </section>
+
+            <section className="settings-section">
+              <h2>人格描述同輸出格式</h2>
+              <p className="settings-key-hint">
+                人格描述唔應包含 JSON／投票格式；格式由 Verdict／Council 模式自動附加。
+                若舊設定曾儲存完整 Verdict system prompt（含 vote schema），可撳「套用遷移」剝離格式並保留人格描述。
+              </p>
+              {onApplyPromptMigration && (
+                <button
+                  type="button"
+                  className="access-btn"
+                  disabled={migrating}
+                  onClick={() => onApplyPromptMigration()}
+                >
+                  {migrating ? "遷移中…" : "套用遷移／重設輸出格式（保留人格描述）"}
+                </button>
+              )}
             </section>
 
             {PERSONAS.map((id) => {
@@ -103,7 +127,7 @@ export function SettingsPersonaFields({
                     />
                   </label>
                   <label className="settings-label">
-                    System Prompt 覆寫
+                    人格描述（personaDescription）
                     <textarea
                       className="settings-textarea"
                       value={p.systemPrompt}
@@ -111,8 +135,21 @@ export function SettingsPersonaFields({
                         updatePersona(id, "systemPrompt", e.target.value)
                       }
                       rows={4}
+                      placeholder="只寫角色／人格；唔好貼 JSON 或投票格式"
                     />
                   </label>
+                  <p className="settings-key-hint">
+                    唔應包含 JSON／投票格式；Verdict／Council 會自動附加對應輸出格式。
+                  </p>
+                  {onResetPersona && (
+                    <button
+                      type="button"
+                      className="access-btn"
+                      onClick={() => onResetPersona(id)}
+                    >
+                      還原預設人格描述
+                    </button>
+                  )}
                   <div className="settings-grid3">
                     <label className="settings-label">
                       Timeout (ms)

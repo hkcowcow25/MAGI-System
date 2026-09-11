@@ -8,6 +8,8 @@ import {
   saveSettings,
   testConnection,
   unlockAccessCode,
+  migratePromptFormats,
+  resetDefaultPersonaDescription,
 } from "@/app/actions";
 import {
   PERSONAS,
@@ -29,8 +31,9 @@ export default function SettingsPage() {
   const [precedenceNote, setPrecedenceNote] = useState("");
   const [mockMode, setMockMode] = useState(false);
   const [form, setForm] = useState<FormState | null>(null);
-  const [testMsg, setTestMsg] = useState<Partial<Record<MagiId, string>>>({});
+  const [testMsg, setTestMsg] = useState<Partial<Record<MagiId, string>>>({{}});
   const [testing, setTesting] = useState<MagiId | null>(null);
+  const [migrating, setMigrating] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -102,6 +105,7 @@ export default function SettingsPage() {
               provider: p.provider,
               model: p.model,
               baseUrl: p.baseUrl,
+              personaDescription: p.systemPrompt,
               systemPrompt: p.systemPrompt,
               timeoutMs: p.timeoutMs,
               maxOutputTokens: p.maxOutputTokens,
@@ -109,7 +113,7 @@ export default function SettingsPage() {
             },
           ];
         }),
-      ) as FormState["personas"],
+      ) as unknown as NonNullable<Parameters<typeof saveSettings>[0]["personas"]>,
       summarizer: form.summarizer.enabled
         ? {
             enabled: true,
@@ -148,6 +152,32 @@ export default function SettingsPage() {
         [id]: res.error || res.message || "測試失敗",
       }));
     }
+  };
+
+  const handleApplyMigration = async () => {
+    setMigrating(true);
+    setError(null);
+    setInfo(null);
+    const res = await migratePromptFormats();
+    setMigrating(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setForm(viewToForm(res));
+    setInfo("已套用遷移：剝離 JSON／投票格式，保留人格描述。");
+  };
+
+  const handleResetPersona = async (id: MagiId) => {
+    setError(null);
+    setInfo(null);
+    const res = await resetDefaultPersonaDescription(id);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setForm(viewToForm(res));
+    setInfo(`${id} 已還原預設人格描述（provider／model 不變）。`);
   };
 
   return (
@@ -216,6 +246,9 @@ export default function SettingsPage() {
               testing={testing}
               testMsg={testMsg}
               onTest={(id) => void handleTest(id)}
+              onResetPersona={(id) => void handleResetPersona(id)}
+              onApplyPromptMigration={() => void handleApplyMigration()}
+              migrating={migrating}
             />
             <SettingsSummarizerFields
               form={form}
