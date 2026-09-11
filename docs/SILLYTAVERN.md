@@ -55,3 +55,7 @@ Invoke-RestMethod -Uri "$base/v1/chat/completions" `
 - **401**：檢查 Bearer 是否等於 `MAGI_API_KEY`。
 - **連唔到**：確認 `MAGI_HOST_BIND`、防火牆、以及 NAS IP（唔好用 container 內 `localhost` 當客戶端位址）。
 - **回 INCOMPLETE**：某一機 API 失敗；檢查該人格嘅 provider／金鑰；錯誤**唔會**偽裝成 ABSTAIN。
+
+## Encoding note (UTF-8)
+
+API JSON responses are served as `application/json; charset=utf-8`. Assistant deliberation text uses ASCII hyphens (` - `) instead of Unicode em dashes to avoid mojibake in PowerShell and other clients that mis-decode UTF-8. Always decode responses as UTF-8.

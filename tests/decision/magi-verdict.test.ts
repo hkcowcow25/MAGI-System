@@ -20,6 +20,7 @@ describe("runMagiDeliberation (mock mode)", () => {
   it("critical topic rejects without unanimous approve", async () => {
     const r = await runMagiDeliberation("Should we destroy the city?");
     expect(r.results.MELCHIOR.isCritical).toBe(true);
+    // Melchior+Balthasar REJECT, Casper ABSTAIN → critical path → REJECT
     expect(r.verdict).toBe("REJECT");
     expect(r.status).toBe("complete");
   });
@@ -30,6 +31,12 @@ describe("runMagiDeliberation (mock mode)", () => {
     expect(text).toContain("Final Verdict");
     expect(text).toContain("MELCHIOR");
     expect(text).toContain("Next Steps");
+  });
+  it("formatDeliberationContent uses ASCII hyphens not em dash", async () => {
+    const r = await runMagiDeliberation("Approve the report?");
+    const text = formatDeliberationContent(r);
+    expect(text).not.toMatch(/[\u2012\u2013\u2014\u2015]/);
+    expect(text).toContain("MELCHIOR - ");
   });
 });
 
