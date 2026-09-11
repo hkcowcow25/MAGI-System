@@ -1,33 +1,35 @@
-# Stage 1: deps
+# MAGI System - Next.js production image for Synology / Docker
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
-# Prefer reproducible npm ci when lock is present; fall back to npm install.
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+COPY package.json ./
+# package-lock.json is shipped as gzip+base64 parts (MCP size limits);
+# reassemble then npm ci for reproducible installs including vitest.
+COPY package-lock.json.gz.b64.part* ./
+RUN cat package-lock.json.gz.b64.part* | base64 -d | gunzip > package-lock.json \
+  && rm -f package-lock.json.gz.b64.part* \
+  && npm ci
 
-# Stage 2: builder
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+# Drop any leftover lock fragments from the build context (not needed at runtime)
+RUN rm -f package-lock.json.gz.b64 package-lock.json.gz.b64.part* \
+  && npm run build
 
-# Stage 3: runner
 FROM node:22-alpine AS runner
 WORKDIR /app
-
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
 RUN addgroup --system --gid 1001 nodejs \
- && adduser  --system --uid 1001 nextjs
+  && adduser --system --uid 1001 nextjs
 
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 
 USER nextjs
 EXPOSE 3000
-
 CMD ["node", "server.js"]
