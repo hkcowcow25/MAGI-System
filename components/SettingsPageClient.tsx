@@ -31,7 +31,7 @@ export default function SettingsPage() {
   const [precedenceNote, setPrecedenceNote] = useState("");
   const [mockMode, setMockMode] = useState(false);
   const [form, setForm] = useState<FormState | null>(null);
-  const [testMsg, setTestMsg] = useState<Partial<Record<MagiId, string>>>({{}});
+  const [testMsg, setTestMsg] = useState<Partial<Record<MagiId, string>>>({});
   const [testing, setTesting] = useState<MagiId | null>(null);
   const [migrating, setMigrating] = useState(false);
 
