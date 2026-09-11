@@ -99,7 +99,15 @@ export function parseCouncilOpinion(text: string): CouncilOpinionAnalysis {
       : typeof obj.reasoning === "string"
         ? obj.reasoning
         : "";
-  if (!proposal.trim()) throw new Error("Missing proposal");
+  if (!proposal.trim()) {
+    // Do NOT invent proposal from vote — surface Verdict-schema confusion clearly.
+    if (typeof obj.vote === "string") {
+      throw new Error(
+        "Missing proposal (response looks like Verdict vote schema)",
+      );
+    }
+    throw new Error("Missing proposal");
+  }
   if (!rationale.trim()) throw new Error("Missing rationale");
   return {
     proposal,
