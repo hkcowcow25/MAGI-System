@@ -65,7 +65,9 @@ export default function MagiDiagram({ partialResults, processingUnits, finalVerd
   const isProcessing = processingUnits.size > 0;
 
   useEffect(() => {
-    if (processingUnits.size === 3) {
+    if (processingUnits.size !== 3) return;
+    // Defer setState so the effect body stays sync-free (eslint react-hooks/set-state-in-effect).
+    const timer = setTimeout(() => {
       setFlickerDelays({
         BALTHASAR: `${Math.floor(Math.random() * 180)}ms`,
         CASPER: `${Math.floor(Math.random() * 180)}ms`,
@@ -73,7 +75,8 @@ export default function MagiDiagram({ partialResults, processingUnits, finalVerd
       });
       setCode(rand(3));
       setExt(rand(4));
-    }
+    }, 0);
+    return () => clearTimeout(timer);
   }, [processingUnits.size]);
 
   const modalResult: MagiResult | null = modalId ? (partialResults[modalId] ?? null) : null;
