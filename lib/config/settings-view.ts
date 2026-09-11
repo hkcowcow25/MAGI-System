@@ -20,6 +20,8 @@ export interface PersonaSettingsView {
   model: string;
   baseUrl: string;
   systemPrompt: string;
+  /** Persona identity only (same as systemPrompt after migration). */
+  personaDescription: string;
   timeoutMs: number;
   maxOutputTokens: number;
   temperature: number;
@@ -64,7 +66,9 @@ export async function buildSettingsView(
       provider: uiProvider,
       model: cfg.model,
       baseUrl: cfg.baseUrl ?? "",
-      systemPrompt: cfg.systemPrompt,
+      // Identity only — Verdict/Council JSON format is appended by engines.
+      systemPrompt: cfg.personaDescription,
+      personaDescription: cfg.personaDescription,
       timeoutMs: cfg.timeoutMs,
       maxOutputTokens: cfg.maxOutputTokens,
       temperature: cfg.temperature,
@@ -101,6 +105,6 @@ export async function buildSettingsView(
       apiKeyStatusLabel: keyLabel(sumKeyStatus),
     },
     precedenceNote:
-      "非機密設定優先順序：預設值 < 環境變數 < /data/magi-settings.json。API 金鑰只來自環境變數，設定頁無法寫入或讀取金鑰值。",
+      "非機密設定優先順序：預設值 < 環境變數 < /data/magi-settings.json。API 金鑰只來自環境變數，設定頁無法寫入或讀取金鑰值。人格描述唔應包含 JSON／投票格式；格式由 Verdict／Council 模式自動附加。",
   };
 }
