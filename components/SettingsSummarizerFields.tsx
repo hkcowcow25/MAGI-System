@@ -8,6 +8,9 @@ export type SettingsSummarizerFieldsProps = {
   setForm: React.Dispatch<React.SetStateAction<FormState | null>>;
   saving: boolean;
   onSave: () => void;
+  testingSummarizer?: boolean;
+  summarizerTestMsg?: string | null;
+  onTestSummarizer?: () => void;
 };
 
 export function SettingsSummarizerFields({
@@ -15,6 +18,9 @@ export function SettingsSummarizerFields({
   setForm,
   saving,
   onSave,
+  testingSummarizer = false,
+  summarizerTestMsg = null,
+  onTestSummarizer,
 }: SettingsSummarizerFieldsProps) {
   return (
     <>
@@ -182,6 +188,14 @@ export function SettingsSummarizerFields({
             <div className="settings-actions">
               <button
                 type="button"
+                className="access-btn"
+                disabled={testingSummarizer || !form.summarizer.enabled}
+                onClick={() => onTestSummarizer?.()}
+              >
+                {testingSummarizer ? "測試中…" : "測試摘要"}
+              </button>
+              <button
+                type="button"
                 className="intro-confirm"
                 disabled={saving}
                 onClick={() => void onSave()}
@@ -189,6 +203,11 @@ export function SettingsSummarizerFields({
                 {saving ? "儲存中…" : "儲存設定"}
               </button>
             </div>
+            {summarizerTestMsg && (
+              <p className="settings-test-msg" role="status">
+                {summarizerTestMsg}
+              </p>
+            )}
     </>
   );
 }
