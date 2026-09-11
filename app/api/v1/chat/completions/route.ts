@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { jsonUtf8 } from "@/lib/api/json";
 import { requireBearer } from "@/lib/auth/bearer";
 import {
   extractTopicFromMessages,
@@ -14,7 +15,7 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 function badRequest(message: string, code = "invalid_request_error") {
-  return NextResponse.json(
+  return jsonUtf8(
     { error: { message, type: "invalid_request_error", code } },
     { status: 400 },
   );
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
     const id = `chatcmpl-magi-${Date.now().toString(36)}`;
     const created = Math.floor(Date.now() / 1000);
 
-    return NextResponse.json({
+    return jsonUtf8({
       id,
       object: "chat.completion",
       created,
@@ -70,6 +71,7 @@ export async function POST(req: NextRequest) {
           finish_reason: "stop",
         },
       ],
+      // Never invent token usage — omit unless we have real provider totals (mock has none)
       magi: {
         verdict: deliberation.verdict,
         status: deliberation.status,
@@ -81,7 +83,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     if (err instanceof MessageValidationError) {
-      return NextResponse.json(
+      return jsonUtf8(
         {
           error: {
             message: err.message,
@@ -93,7 +95,7 @@ export async function POST(req: NextRequest) {
       );
     }
     const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json(
+    return jsonUtf8(
       {
         error: {
           message,
