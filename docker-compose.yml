@@ -3,13 +3,33 @@ services:
     build: .
     container_name: magi
     ports:
-      - "127.0.0.1:3000:3000"
+      - "${MAGI_HOST_BIND:-127.0.0.1}:${MAGI_PORT:-3000}:3000"
     env_file:
-      - .env.local
+      - ${MAGI_ENV_FILE:-.env.local}
+    environment:
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
     restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - ${MAGI_DATA_VOLUME:-magi-data}:/data
     networks:
       - magi-network
 
+volumes:
+  magi-data:
+
 networks:
-  magi-network: # Define the custom network
+  magi-network:
     name: magi-network
