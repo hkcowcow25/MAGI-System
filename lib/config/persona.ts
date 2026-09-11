@@ -4,13 +4,14 @@ import {
   BALTHASAR_PROMPT,
   CASPER_PROMPT,
 } from "@/lib/prompts";
+import {
+  getCachedOrEmpty,
+  loadSettingsFile,
+  type PersonaSettingsOverride,
+} from "@/lib/config/settings";
 
-export type ProviderKind =
-  | "openai"
-  | "anthropic"
-  | "google"
-  | "openai-compatible"
-  | "ollama";
+import type { ProviderKind } from "@/lib/config/types";
+export type { ProviderKind } from "@/lib/config/types";
 
 export interface PersonaConfig {
   id: MagiId;
@@ -103,7 +104,12 @@ export function getMagiApiKey(): string | undefined {
   return env("MAGI_API_KEY");
 }
 
-export function getPersonaConfig(id: MagiId): PersonaConfig {
+/**
+ * Precedence for non-secrets:
+ *   defaults < environment < settings file (/data/magi-settings.json)
+ * API keys: environment only (never from settings file / UI).
+ */
+function buildFromEnv(id: MagiId): PersonaConfig {
   const d = DEFAULTS[id];
   const prefix = id;
   const provider = parseProvider(env(`${prefix}_PROVIDER`), d.provider);
@@ -123,7 +129,6 @@ export function getPersonaConfig(id: MagiId): PersonaConfig {
       effort === "medium" || effort === "high" ? effort : "low";
   }
 
-  // ollama is preferred via openai-compatible endpoint
   const resolvedProvider: ProviderKind =
     provider === "ollama" ? "openai-compatible" : provider;
   const resolvedBase =
@@ -145,6 +150,66 @@ export function getPersonaConfig(id: MagiId): PersonaConfig {
   };
 }
 
+function applyOverride(
+  base: PersonaConfig,
+  override: PersonaSettingsOverride | undefined,
+): PersonaConfig {
+  if (!override) return base;
+
+  const providerHint = override.provider ?? base.provider;
+  const resolvedProvider: ProviderKind =
+    providerHint === "ollama" ? "openai-compatible" : providerHint;
+
+  let baseUrl =
+    override.baseUrl !== undefined ? override.baseUrl : base.baseUrl;
+  if (providerHint === "ollama" && !baseUrl) {
+    baseUrl = "http://127.0.0.1:11434/v1";
+  }
+
+  return {
+    ...base,
+    provider: resolvedProvider,
+    model: override.model ?? base.model,
+    baseUrl,
+    systemPrompt: override.systemPrompt ?? base.systemPrompt,
+    timeoutMs: override.timeoutMs ?? base.timeoutMs,
+    maxOutputTokens: override.maxOutputTokens ?? base.maxOutputTokens,
+    temperature: override.temperature ?? base.temperature,
+  };
+}
+
+export function getPersonaConfig(id: MagiId): PersonaConfig {
+  const fromEnv = buildFromEnv(id);
+  const file = getCachedOrEmpty();
+  const override = file.personas?.[id];
+  return applyOverride(fromEnv, override);
+}
+
+export async function getPersonaConfigAsync(id: MagiId): Promise<PersonaConfig> {
+  await loadSettingsFile();
+  return getPersonaConfig(id);
+}
+
 export function getAllPersonaConfigs(): PersonaConfig[] {
   return (["MELCHIOR", "BALTHASAR", "CASPER"] as MagiId[]).map(getPersonaConfig);
 }
+
+export async function getAllPersonaConfigsAsync(): Promise<PersonaConfig[]> {
+  await loadSettingsFile();
+  return getAllPersonaConfigs();
+}
+
+export function personaApiKeyConfigured(id: MagiId): boolean {
+  const d = DEFAULTS[id];
+  return Boolean(env(`${id}_API_KEY`) ?? env(d.legacyKeyEnv));
+}
+
+export function getPersonaUiProvider(id: MagiId): ProviderKind {
+  const file = getCachedOrEmpty();
+  const override = file.personas?.[id]?.provider;
+  if (override) return override;
+  const d = DEFAULTS[id];
+  return parseProvider(env(`${id}_PROVIDER`), d.provider);
+}
+
+export { DEFAULTS as PERSONA_DEFAULTS };
