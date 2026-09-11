@@ -116,6 +116,7 @@ export default function Home() {
           minority_views: result.minority_views,
           missing_information: result.missing_information,
           synthesis_mode: result.synthesis_mode,
+          synthesis_error: result.synthesis_error,
         });
       } else {
         setPartialResults(result.results);
