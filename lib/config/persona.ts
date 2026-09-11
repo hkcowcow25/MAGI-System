@@ -200,8 +200,15 @@ function applyOverride(
   const resolvedProvider: ProviderKind =
     providerHint === "ollama" ? "openai-compatible" : providerHint;
 
-  let baseUrl =
-    override.baseUrl !== undefined ? override.baseUrl : base.baseUrl;
+  let baseUrl: string | undefined;
+  if (override.baseUrl === null || override.baseUrl === "") {
+    // Explicit clear — fall back to env/default layer (base).
+    baseUrl = base.baseUrl;
+  } else if (override.baseUrl !== undefined) {
+    baseUrl = override.baseUrl;
+  } else {
+    baseUrl = base.baseUrl;
+  }
   if (providerHint === "ollama" && !baseUrl) {
     baseUrl = "http://127.0.0.1:11434/v1";
   }
