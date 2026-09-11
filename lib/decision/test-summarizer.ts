@@ -1,10 +1,8 @@
 import type { CouncilOpinion, MagiSynthesisError } from "@/types/magi";
 import { loadSettingsFile } from "@/lib/config/settings";
 import { isMockMode } from "@/lib/config/persona";
-import {
-  llmSynthesis,
-  resolveSummarizer,
-} from "@/lib/decision/magi-council-impl";
+import { resolveSummarizer } from "@/lib/decision/summarizer-key";
+import { llmSynthesis } from "@/lib/decision/summarizer-run";
 
 export type SummarizerTestResult = {
   ok: boolean;
