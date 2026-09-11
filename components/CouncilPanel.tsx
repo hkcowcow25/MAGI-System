@@ -1,11 +1,48 @@
 "use client";
 
-import type { MagiCouncilResult, MagiId } from "@/types/magi";
+import type { MagiCouncilResult, MagiId, MagiSynthesisError } from "@/types/magi";
 
 const ORDER: MagiId[] = ["MELCHIOR", "BALTHASAR", "CASPER"];
 
 interface Props {
   result: MagiCouncilResult;
+}
+
+function synthesisModeLabel(result: MagiCouncilResult): string {
+  if (result.synthesis_mode === "mock") return "模擬";
+  if (result.synthesis_mode === "llm") return "LLM 摘要";
+  if (result.synthesis_error) {
+    return "抽取式（摘要 LLM 失敗）";
+  }
+  return "抽取式（無額外 LLM）";
+}
+
+function synthesisErrorLines(err: MagiSynthesisError): string[] {
+  const lines: string[] = [];
+  switch (err.stage) {
+    case "config":
+      lines.push("摘要 LLM 設定錯誤（config）");
+      break;
+    case "api":
+      lines.push("摘要 LLM 失敗（API）");
+      break;
+    case "parse":
+      lines.push("摘要 LLM 失敗（解析）");
+      break;
+    case "empty":
+      lines.push("摘要 LLM 失敗（空白回應）");
+      break;
+    default:
+      lines.push("摘要 LLM 失敗");
+  }
+  const meta: string[] = [];
+  if (err.provider) meta.push(err.provider);
+  if (err.model) meta.push(err.model);
+  if (err.httpStatus != null) meta.push(`HTTP ${err.httpStatus}`);
+  if (err.finish_reason) meta.push(`finish_reason=${err.finish_reason}`);
+  if (meta.length) lines.push(meta.join(" · "));
+  lines.push(err.message);
+  return lines;
 }
 
 export default function CouncilPanel({ result }: Props) {
@@ -15,13 +52,19 @@ export default function CouncilPanel({ result }: Props) {
         <span className="council-title">MAGI COUNCIL</span>
         <span className="council-meta">
           {result.status === "complete" ? "完整" : "不完整"} · 合成：
-          {result.synthesis_mode === "mock"
-            ? "模擬"
-            : result.synthesis_mode === "llm"
-              ? "LLM 摘要"
-              : "抽取式（無額外 LLM）"}
+          {synthesisModeLabel(result)}
         </span>
       </div>
+
+      {result.synthesis_error && (
+        <div className="council-synth-error" role="status">
+          {synthesisErrorLines(result.synthesis_error).map((line) => (
+            <p key={line} className="council-synth-error-line">
+              {line}
+            </p>
+          ))}
+        </div>
+      )}
 
       <div className="council-opinions">
         {ORDER.map((id) => {
