@@ -8,7 +8,7 @@
 
 **Verified pin（真實模型／Council，PR #2）：** `5fd5e8a`  
 **本分支起點：** `4b97be627bf2dc2082c36f2a8c00689b01530eb2`（`feature/magi-web-council` tip）  
-**Head tip：** （見 PR 頂部／最新 push）  
+**Head tip：** `0a177835a50037502e32402d138f1069234ec9ca`（`feature/magi-history`）  
 **Base：** `feature/magi-web-council`（stack；**請勿**直接對 master 直至 #1+#2 合併）
 
 ## 本 PR 新增內容（history）
@@ -75,8 +75,8 @@
 
 ### Pre-merge Settings 修正（本輪）
 
-1. **啟用掣：** 只反映已儲存 `enabled` boolean（預設 false）；唔再用 `configured \|\| enabled`；`enabled=false` 儲存後 reload 仍未勾選；儲存其他設定唔會暗中 re-enable。
-2. **優先順序統一（runtime + Settings UI + 說明）：** 非機密 = 預設值 &lt; 環境變數 &lt; settings JSON；API 金鑰 = 只環境。UI 顯示值同 runtime 共用 resolve helpers。
+1. **啟用掣：** 只反映已儲存 `enabled` boolean（預設 false）；唔再用 `configured || enabled`；`enabled=false` 儲存後 reload 仍未勾選；儲存其他設定唔會暗中 re-enable。
+2. **優先順序統一（runtime + Settings UI + 說明）：** 非機密 = 預設值 < 環境變數 < settings JSON；API 金鑰 = 只環境。UI 顯示值同 runtime 共用 resolve helpers。
 3. **Base URL 可清除：** `baseUrl: ""`／`null` 表示清除覆寫並持久化；LM Studio → Google 唔會殘留 LM Studio URL；provider=google 顯示「Google 唔使用自訂 Base URL」。
 4. **History：** 單次錄製、寫入序列化、auth、redact、`synthesis_error` 保留（見上）。
 
