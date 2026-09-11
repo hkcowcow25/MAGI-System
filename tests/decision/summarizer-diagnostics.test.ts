@@ -212,9 +212,17 @@ describe("summarizer diagnostics", () => {
     process.env.MELCHIOR_API_KEY = "lm-studio";
     completeMock.mockClear();
 
-    const { clearSettingsCache, loadSettingsFile } = await import(
-      "@/lib/config/settings"
-    );
+    const { clearSettingsCache, loadSettingsFile, saveSettingsFile } =
+      await import("@/lib/config/settings");
+    // File wins over env — write google summarizer into settings JSON
+    await saveSettingsFile({
+      version: 1,
+      summarizer: {
+        enabled: true,
+        provider: "google",
+        model: "gemini-2.0-flash",
+      },
+    });
     clearSettingsCache();
     await loadSettingsFile();
 
