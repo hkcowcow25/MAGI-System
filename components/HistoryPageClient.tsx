@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { unlockAccessCode } from "@/app/actions";
 import {
   deleteHistory,
   exportHistoryJson,
   getHistoryDetail,
   listHistory,
-  unlockAccessCode,
-} from "@/app/actions";
+} from "@/lib/history/web-actions";
 import type { HistoryListItem, HistoryRecord } from "@/lib/history/types";
 import type { MagiMode } from "@/types/magi";
 
