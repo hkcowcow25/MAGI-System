@@ -125,3 +125,14 @@ npm test
 特別感謝以下人士贊助 API Token 費用：
 
 - 天上天下唯我翻車大皮粉
+
+
+## Part 2（Web Council／設定）
+
+- 模型：`magi-verdict`（可否決）同 `magi-council`（開放式議會，保留少數意見）
+- Web UI：模式切換；受保護嘅 `/settings`（非機密覆寫寫入 `/data/magi-settings.json`；API 金鑰只經環境變數）
+- Docker volume：`MAGI_DATA_VOLUME` → `/data`
+- 優先順序（非機密）：預設 ＜ 環境變數 ＜ 設定檔
+- 通行：`MAGI_ACCESS_CODE`（Web／Settings）；`MAGI_API_KEY`（`/v1`）
+
+**本交付只做模擬驗證**；真實 LLM／Synology／SillyTavern 未喺 agent 實測。關閉 mock 後請用設定頁「測試連線」同 Notebook 步驟自行接 LM Studio／雲端金鑰。
