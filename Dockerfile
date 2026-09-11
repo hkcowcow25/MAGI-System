@@ -1,8 +1,9 @@
 # Stage 1: deps
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json package-lock.json* ./
+# Prefer reproducible npm ci when lock is present; fall back to npm install.
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 # Stage 2: builder
 FROM node:22-alpine AS builder
