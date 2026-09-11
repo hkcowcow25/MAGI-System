@@ -9,6 +9,8 @@ import { getProviderAdapter, parseUnitAnalysis } from "@/lib/providers";
 import { mockUnitAnalysis } from "@/lib/providers/mock";
 import { toAsciiHyphens } from "@/lib/auth/session";
 import { loadSettingsFile } from "@/lib/config/settings";
+import { buildSystemPrompt } from "@/lib/prompts";
+import { debugLlmLog, inspectResponseKeys } from "@/lib/debug-llm";
 
 export class MagiConfigError extends Error {
   constructor(message: string) {
@@ -74,11 +76,16 @@ async function runUnit(
     }
 
     const adapter = getProviderAdapter(config.provider);
+    const systemPrompt = buildSystemPrompt(
+      config.id,
+      "verdict",
+      config.personaDescription,
+    );
     const completion = await withTimeout(
       adapter.complete({
         model: config.model,
         messages: [
-          { role: "system", content: config.systemPrompt },
+          { role: "system", content: systemPrompt },
           { role: "user", content: topic },
         ],
         maxOutputTokens: config.maxOutputTokens,
@@ -92,17 +99,44 @@ async function runUnit(
       config.id,
     );
 
-    const analysis = parseUnitAnalysis(completion.text);
-    return {
-      ...base,
-      unitStatus: "ok",
-      vote: analysis.vote,
-      reasoning: analysis.reasoning,
-      isCritical: analysis.isCritical,
-      assumptions: analysis.assumptions,
-      risks: analysis.risks,
-      missing_information: analysis.missing_information,
-    };
+    try {
+      const analysis = parseUnitAnalysis(completion.text);
+      debugLlmLog({
+        mode: "verdict",
+        personaId: config.id,
+        provider: config.provider,
+        model: config.model,
+        finish_reason: completion.finish_reason ?? null,
+        responseLength: completion.text.length,
+        questionLength: topic.length,
+        ...inspectResponseKeys(completion.text),
+      });
+      return {
+        ...base,
+        unitStatus: "ok",
+        vote: analysis.vote,
+        reasoning: analysis.reasoning,
+        isCritical: analysis.isCritical,
+        assumptions: analysis.assumptions,
+        risks: analysis.risks,
+        missing_information: analysis.missing_information,
+      };
+    } catch (parseErr) {
+      const schemaError =
+        parseErr instanceof Error ? parseErr.message : String(parseErr);
+      debugLlmLog({
+        mode: "verdict",
+        personaId: config.id,
+        provider: config.provider,
+        model: config.model,
+        finish_reason: completion.finish_reason ?? null,
+        responseLength: completion.text.length,
+        questionLength: topic.length,
+        schemaError,
+        ...inspectResponseKeys(completion.text),
+      });
+      throw parseErr;
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return {
