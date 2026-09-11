@@ -1,4 +1,5 @@
 import { MagiId, MagiUnitAnalysis } from "@/types/magi";
+import type { CouncilOpinionAnalysis } from "@/lib/providers/parse-json";
 
 /** Deterministic mock analyses for MAGI_MOCK_MODE=true */
 export function mockUnitAnalysis(id: MagiId, topic: string): MagiUnitAnalysis {
@@ -6,8 +7,8 @@ export function mockUnitAnalysis(id: MagiId, topic: string): MagiUnitAnalysis {
   const critical =
     lower.includes("destroy") ||
     lower.includes("kill") ||
-    lower.includes("\u81ea\u7206") ||
-    lower.includes("\u6bba");
+    lower.includes("自爆") ||
+    lower.includes("殺");
 
   const base: Record<MagiId, MagiUnitAnalysis> = {
     MELCHIOR: {
@@ -36,5 +37,37 @@ export function mockUnitAnalysis(id: MagiId, topic: string): MagiUnitAnalysis {
     },
   };
 
+  return base[id];
+}
+
+/** Deterministic mock council opinions for MAGI_MOCK_MODE=true */
+export function mockCouncilOpinion(
+  id: MagiId,
+  topic: string,
+): CouncilOpinionAnalysis {
+  const slice = topic.slice(0, 80);
+  const base: Record<MagiId, CouncilOpinionAnalysis> = {
+    MELCHIOR: {
+      proposal: `[MOCK] Proceed with a measured pilot for: ${slice}`,
+      rationale:
+        "Scientific framing favours collecting evidence before full commitment.",
+      risks: ["Overfitting to early signals", "Resource misallocation"],
+      missing_information: ["Baseline metrics", "Success criteria"],
+    },
+    BALTHASAR: {
+      proposal: `[MOCK] Prioritise safeguards and staged rollout for: ${slice}`,
+      rationale:
+        "Protective stance emphasises harm reduction and reversible steps.",
+      risks: ["Vulnerable parties overlooked", "Insufficient support"],
+      missing_information: ["Stakeholder map", "Rollback plan"],
+    },
+    CASPER: {
+      proposal: `[MOCK] Surface unspoken concerns before committing on: ${slice}`,
+      rationale:
+        "Intuitive read suggests trust and morale matter as much as the plan.",
+      risks: ["Hidden resistance", "Misread motives"],
+      missing_information: ["Emotional climate", "Informal power dynamics"],
+    },
+  };
   return base[id];
 }
