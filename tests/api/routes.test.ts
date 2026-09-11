@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { closeHistoryDb } from "@/lib/history/store";
 import { NextRequest } from "next/server";
 import { GET as healthz } from "@/app/api/healthz/route";
 import { GET as models } from "@/app/api/v1/models/route";
@@ -53,9 +57,13 @@ describe("GET /v1/models", () => {
 });
 
 describe("POST /v1/chat/completions", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     process.env.MAGI_API_KEY = "test-secret";
     process.env.MAGI_MOCK_MODE = "true";
+    const dir = await mkdtemp(path.join(tmpdir(), "magi-api-hist-"));
+    process.env.MAGI_HISTORY_DB_PATH = path.join(dir, "magi-history.sqlite");
+    process.env.MAGI_DATA_DIR = dir;
+    await closeHistoryDb();
   });
 
   it("rejects missing auth", async () => {
