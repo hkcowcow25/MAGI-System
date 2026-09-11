@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./magi-part2.css";
 
 export const metadata: Metadata = {
   title: "MAGI SYSTEM — NERV",
