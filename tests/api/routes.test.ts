@@ -117,7 +117,23 @@ describe("POST /v1/chat/completions", () => {
     expect(json.model).toBe("magi-verdict");
     expect(json.choices[0].message.role).toBe("assistant");
     expect(json.choices[0].message.content).toContain("Final Verdict");
+    expect(json.choices[0].message.content).not.toMatch(/[\u2012\u2013\u2014\u2015]/);
     expect(json.magi.verdict).toBeTruthy();
     expect(json.usage).toBeUndefined();
+    expect(res.headers.get("content-type") || "").toMatch(/charset=utf-8/i);
+  });
+
+  it("bearer still required (wrong key)", async () => {
+    const res = await chat(
+      req("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: { authorization: "Bearer wrong" },
+        body: {
+          model: "magi-verdict",
+          messages: [{ role: "user", content: "Approve?" }],
+        },
+      }),
+    );
+    expect(res.status).toBe(401);
   });
 });
