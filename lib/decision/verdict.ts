@@ -1,4 +1,4 @@
-import { MagiId, MagiResult, PartialResults, Verdict, Vote } from "@/types/magi";
+import { MagiId, MagiResult, PartialResults, Verdict } from "@/types/magi";
 
 export const MAGI_UNITS: MagiId[] = ["MELCHIOR", "BALTHASAR", "CASPER"];
 
