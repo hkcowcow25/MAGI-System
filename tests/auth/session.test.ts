@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
   accessCodeMatches,
   createSessionToken,
@@ -58,6 +61,10 @@ describe("web deliberate gate", () => {
     process.env.MAGI_SESSION_SECRET = "session-secret-for-tests";
     process.env.MAGI_MOCK_MODE = "true";
     process.env.MAGI_API_KEY = "test-secret";
+    const histDir = mkdtempSync(path.join(tmpdir(), "magi-sess-hist-"));
+    process.env.MAGI_DATA_DIR = histDir;
+    process.env.MAGI_HISTORY_DB_PATH = path.join(histDir, "magi-history.sqlite");
+    process.env.MAGI_SETTINGS_PATH = path.join(histDir, "magi-settings.json");
     cookieStore = new Map();
 
     vi.resetModules();
