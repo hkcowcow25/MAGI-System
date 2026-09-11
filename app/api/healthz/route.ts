@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
+import { jsonUtf8 } from "@/lib/api/json";
 
-/** Liveness probe — no LLM calls. */
+/** Liveness probe - no LLM calls. */
 export async function GET() {
-  return NextResponse.json(
+  return jsonUtf8(
     {
       status: "ok",
       service: "magi-system",
