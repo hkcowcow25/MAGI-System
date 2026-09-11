@@ -7,6 +7,7 @@ import {
 } from "@/lib/config/persona";
 import { getProviderAdapter, parseUnitAnalysis } from "@/lib/providers";
 import { mockUnitAnalysis } from "@/lib/providers/mock";
+import { toAsciiHyphens } from "@/lib/auth/session";
 
 export class MagiConfigError extends Error {
   constructor(message: string) {
@@ -117,7 +118,7 @@ function collectDisagreements(results: MagiResult[]): string[] {
   if (ok.length < 2) return [];
   const votes = new Set(ok.map((r) => r.vote));
   if (votes.size <= 1) return [];
-  return ok.map((r) => `${r.id}: ${r.vote} — ${r.reasoning.slice(0, 120)}`);
+  return ok.map((r) => `${r.id}: ${r.vote} - ${r.reasoning.slice(0, 120)}`);
 }
 
 function collectMissing(results: MagiResult[]): string[] {
@@ -204,11 +205,11 @@ export function formatDeliberationContent(
   for (const id of MAGI_UNITS) {
     const r = deliberation.results[id];
     if (r.unitStatus === "error") {
-      lines.push(`### ${id} — ERROR`);
+      lines.push(`### ${id} - ERROR`);
       lines.push(r.reasoning);
     } else {
       lines.push(
-        `### ${id} — ${r.vote}${r.isCritical ? " (CRITICAL)" : ""}`,
+        `### ${id} - ${r.vote}${r.isCritical ? " (CRITICAL)" : ""}`,
       );
       lines.push(r.reasoning);
       if (r.assumptions?.length) {
@@ -234,5 +235,6 @@ export function formatDeliberationContent(
     lines.push("## Next Steps");
     for (const s of deliberation.next_steps) lines.push(`- ${s}`);
   }
-  return lines.join("\n");
+  // ASCII hyphens only — Unicode em/en dashes mojibake in PowerShell / legacy encodings.
+  return toAsciiHyphens(lines.join("\n"));
 }
