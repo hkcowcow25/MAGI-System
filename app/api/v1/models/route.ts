@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { requireBearer } from "@/lib/auth/bearer";
+import { jsonUtf8 } from "@/lib/api/json";
 
 /** List available MAGI models. Requires Bearer; no LLM calls. */
 export async function GET(req: NextRequest) {
@@ -7,7 +8,7 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   const created = Math.floor(Date.now() / 1000);
-  return NextResponse.json({
+  return jsonUtf8({
     object: "list",
     data: [
       {

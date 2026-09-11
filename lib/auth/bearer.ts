@@ -1,10 +1,14 @@
 import { NextRequest } from "next/server";
 import { getMagiApiKey } from "@/lib/config/persona";
+import { jsonUtf8 } from "@/lib/api/json";
 
 export function unauthorizedResponse(message = "Unauthorized"): Response {
-  return Response.json(
+  return jsonUtf8(
     { error: { message, type: "invalid_request_error", code: "unauthorized" } },
-    { status: 401, headers: { "WWW-Authenticate": "Bearer" } },
+    {
+      status: 401,
+      headers: { "WWW-Authenticate": "Bearer" },
+    },
   );
 }
 
