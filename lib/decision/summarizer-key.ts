@@ -91,39 +91,102 @@ export type ResolvedSummarizer = {
   configError?: string;
 };
 
-export function resolveSummarizer(): ResolvedSummarizer | null {
-  const file = getCachedOrEmpty();
-  const s: SummarizerSettings = { ...(file.summarizer ?? {}) };
+/**
+ * Non-secret summarizer fields with unified precedence:
+ *   defaults < environment < settings JSON
+ * API keys remain env-only (see resolveSummarizerKey).
+ */
+export type SummarizerDisplaySettings = {
+  /** Saved/resolved enabled flag (default false). Not inferred from model. */
+  enabled: boolean;
+  provider: ProviderKind;
+  model: string;
+  baseUrl: string;
+  timeoutMs: number;
+  maxOutputTokens: number;
+  temperature: number;
+};
+
+export function peekSummarizerSettings(): SummarizerDisplaySettings {
+  // defaults
+  let enabled: boolean | undefined;
+  let provider: ProviderKind | undefined;
+  let model: string | undefined;
+  let baseUrl: string | undefined;
+  let timeoutMs: number | undefined;
+  let maxOutputTokens: number | undefined;
+  let temperature: number | undefined;
+
+  // env layer
   if (env("MAGI_SUMMARIZER_PROVIDER")) {
-    s.provider = env("MAGI_SUMMARIZER_PROVIDER") as ProviderKind;
+    provider = env("MAGI_SUMMARIZER_PROVIDER") as ProviderKind;
   }
-  if (env("MAGI_SUMMARIZER_MODEL")) s.model = env("MAGI_SUMMARIZER_MODEL");
-  if (env("MAGI_SUMMARIZER_BASE_URL")) s.baseUrl = env("MAGI_SUMMARIZER_BASE_URL");
+  if (env("MAGI_SUMMARIZER_MODEL")) model = env("MAGI_SUMMARIZER_MODEL");
+  if (env("MAGI_SUMMARIZER_BASE_URL")) baseUrl = env("MAGI_SUMMARIZER_BASE_URL");
   if (env("MAGI_SUMMARIZER_TIMEOUT_MS")) {
     const n = Number.parseInt(env("MAGI_SUMMARIZER_TIMEOUT_MS")!, 10);
-    if (Number.isFinite(n) && n > 0) s.timeoutMs = n;
+    if (Number.isFinite(n) && n > 0) timeoutMs = n;
   }
-  if (env("MAGI_SUMMARIZER_ENABLED") === "false") s.enabled = false;
-  if (env("MAGI_SUMMARIZER_ENABLED") === "true") s.enabled = true;
+  if (env("MAGI_SUMMARIZER_ENABLED") === "false") enabled = false;
+  if (env("MAGI_SUMMARIZER_ENABLED") === "true") enabled = true;
 
-  if (s.enabled === false) return null;
-  if (!s.model?.trim()) return null;
+  // settings JSON wins over env
+  const file = getCachedOrEmpty();
+  const s: SummarizerSettings = file.summarizer ?? {};
+  if (typeof s.enabled === "boolean") enabled = s.enabled;
+  if (s.provider) provider = s.provider;
+  if (s.model?.trim()) model = s.model.trim();
+  if (typeof s.baseUrl === "string") {
+    // Non-empty file value overrides env; empty should not appear after sanitize.
+    if (s.baseUrl.trim()) baseUrl = s.baseUrl.trim();
+  }
+  if (s.timeoutMs !== undefined) timeoutMs = s.timeoutMs;
+  if (s.maxOutputTokens !== undefined) maxOutputTokens = s.maxOutputTokens;
+  if (s.temperature !== undefined) temperature = s.temperature;
 
-  const providerRaw = s.provider ?? "openai-compatible";
+  const providerRaw: ProviderKind = provider ?? "openai-compatible";
+  return {
+    enabled: enabled === true,
+    provider: providerRaw,
+    model: model?.trim() ?? "",
+    baseUrl: baseUrl?.trim() ?? "",
+    timeoutMs: timeoutMs ?? 60_000,
+    maxOutputTokens: maxOutputTokens ?? 1024,
+    temperature: temperature ?? 0.2,
+  };
+}
+
+export function resolveSummarizer(): ResolvedSummarizer | null {
+  const peeked = peekSummarizerSettings();
+  const file = getCachedOrEmpty();
+  const fileEnabled = file.summarizer?.enabled;
+  const envEnabled =
+    env("MAGI_SUMMARIZER_ENABLED") === "true"
+      ? true
+      : env("MAGI_SUMMARIZER_ENABLED") === "false"
+        ? false
+        : undefined;
+  // defaults < env < file — explicit false disables; unset+model stays allowed (compat)
+  let enabledGate: boolean | undefined = envEnabled;
+  if (typeof fileEnabled === "boolean") enabledGate = fileEnabled;
+  if (enabledGate === false) return null;
+  if (!peeked.model.trim()) return null;
+
+  const providerRaw = peeked.provider;
   const provider: ProviderKind =
     providerRaw === "ollama" ? "openai-compatible" : providerRaw;
   const baseUrl =
-    s.baseUrl ??
+    peeked.baseUrl.trim() ||
     (providerRaw === "ollama" ? "http://127.0.0.1:11434/v1" : undefined);
 
   if (provider === "openai-compatible" && !baseUrl?.trim()) {
     return {
       provider,
-      model: s.model.trim(),
+      model: peeked.model.trim(),
       baseUrl,
-      timeoutMs: s.timeoutMs ?? 60_000,
-      maxOutputTokens: s.maxOutputTokens ?? 1024,
-      temperature: s.temperature ?? 0.2,
+      timeoutMs: peeked.timeoutMs,
+      maxOutputTokens: peeked.maxOutputTokens,
+      temperature: peeked.temperature,
       configError:
         "Missing baseUrl for openai-compatible summarizer (set MAGI_SUMMARIZER_BASE_URL or Settings → 摘要 Base URL).",
     };
@@ -147,12 +210,12 @@ export function resolveSummarizer(): ResolvedSummarizer | null {
 
   return {
     provider,
-    model: s.model.trim(),
+    model: peeked.model.trim(),
     baseUrl,
     apiKey: keyResult.apiKey,
-    timeoutMs: s.timeoutMs ?? 60_000,
-    maxOutputTokens: s.maxOutputTokens ?? 1024,
-    temperature: s.temperature ?? 0.2,
+    timeoutMs: peeked.timeoutMs,
+    maxOutputTokens: peeked.maxOutputTokens,
+    temperature: peeked.temperature,
     configError: keyResult.configError,
   };
 }
