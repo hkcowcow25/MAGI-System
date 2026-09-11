@@ -1,11 +1,22 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
+import type { MagiMode } from "@/types/magi";
 
-const PLACEHOLDERS: Record<string, string> = {
-  zh: "輸入議題，按 Enter 送出...",
-  ja: "議題を入力して Enter キーで送信...",
-  en: "type question and press Enter...",
+const PLACEHOLDERS: Record<string, Record<MagiMode, string>> = {
+  zh: {
+    verdict: "輸入可否決問題，按 Enter 送出...",
+    council: "輸入開放式問題，按 Enter 召開議會...",
+  },
+  ja: {
+    verdict: "議題を入力して Enter キーで送信...",
+    council: "自由記述の質問を入力して Enter...",
+  },
+  en: {
+    verdict: "type yes/no question and press Enter...",
+    council: "type open-ended question and press Enter...",
+  },
 };
 
 interface DeliberationInputProps {
@@ -17,6 +28,8 @@ interface DeliberationInputProps {
   accessConfigured: boolean;
   onUnlock: (code: string) => void | Promise<void>;
   onLogout: () => void | Promise<void>;
+  mode: MagiMode;
+  onModeChange: (mode: MagiMode) => void;
 }
 
 export default function DeliberationInput({
@@ -28,20 +41,24 @@ export default function DeliberationInput({
   accessConfigured,
   onUnlock,
   onLogout,
+  mode,
+  onModeChange,
 }: DeliberationInputProps) {
   const [accessCode, setAccessCode] = useState("");
   const [unlocking, setUnlocking] = useState(false);
 
-  const placeholder = useSyncExternalStore(
+  const lang = useSyncExternalStore(
     () => () => {},
     () => {
       const code = navigator.language || "";
-      if (code.startsWith("zh")) return PLACEHOLDERS.zh;
-      if (code.startsWith("ja")) return PLACEHOLDERS.ja;
-      return PLACEHOLDERS.en;
+      if (code.startsWith("zh")) return "zh";
+      if (code.startsWith("ja")) return "ja";
+      return "en";
     },
-    () => PLACEHOLDERS.en,
+    () => "en",
   );
+
+  const placeholder = PLACEHOLDERS[lang][mode];
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !isProcessing && unlocked && topic.trim()) {
@@ -76,12 +93,35 @@ export default function DeliberationInput({
 
   return (
     <div className="input-container">
+      <span className="input-row-label">mode:</span>
+      <div className="mode-switch" role="group" aria-label="審議模式">
+        <button
+          type="button"
+          className={`mode-btn ${mode === "verdict" ? "mode-btn-active" : ""}`}
+          onClick={() => onModeChange("verdict")}
+          disabled={isProcessing}
+        >
+          表決（Verdict）
+        </button>
+        <button
+          type="button"
+          className={`mode-btn ${mode === "council" ? "mode-btn-active" : ""}`}
+          onClick={() => onModeChange("council")}
+          disabled={isProcessing}
+        >
+          議會（Council）
+        </button>
+      </div>
+
       <span className="input-row-label">access code:</span>
       {unlocked ? (
         <div className="input-access-row">
           <span className="input-access-code" title="session unlocked">
             {"*".repeat(12)} (unlocked)
           </span>
+          <Link className="access-btn settings-link" href="/settings">
+            設定
+          </Link>
           <button
             type="button"
             className="access-btn"
