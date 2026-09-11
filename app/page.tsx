@@ -190,9 +190,14 @@ export default function Home() {
             ⌥ GitHub
           </a>
           {unlocked && (
-            <Link href="/settings" className="github-link">
-              ⌥ 設定
-            </Link>
+            <>
+              <Link href="/history" className="github-link">
+                ⌥ 紀錄
+              </Link>
+              <Link href="/settings" className="github-link">
+                ⌥ 設定
+              </Link>
+            </>
           )}
         </div>
       </main>
