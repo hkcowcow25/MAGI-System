@@ -1,8 +1,11 @@
 import { MagiId } from "@/types/magi";
 import {
+  PERSONA_IDENTITY,
   MELCHIOR_PROMPT,
   BALTHASAR_PROMPT,
   CASPER_PROMPT,
+  buildSystemPrompt,
+  normalizePersonaDescription,
 } from "@/lib/prompts";
 import {
   getCachedOrEmpty,
@@ -20,6 +23,15 @@ export interface PersonaConfig {
   model: string;
   baseUrl?: string;
   apiKey?: string;
+  /**
+   * Persona identity text only (no Verdict/Council JSON schema).
+   * Engines must call buildSystemPrompt(id, mode, personaDescription).
+   */
+  personaDescription: string;
+  /**
+   * Composed Verdict system prompt for backward compatibility / settings display fallback.
+   * Prefer buildSystemPrompt for mode-correct composition.
+   */
   systemPrompt: string;
   timeoutMs: number;
   maxOutputTokens: number;
@@ -34,7 +46,9 @@ const DEFAULTS: Record<
     number: 1 | 2 | 3;
     provider: ProviderKind;
     model: string;
+    /** @deprecated full verdict prompt — identity is PERSONA_IDENTITY */
     prompt: string;
+    identity: string;
     legacyKeyEnv: string;
     legacyModelEnv: string;
   }
@@ -44,6 +58,7 @@ const DEFAULTS: Record<
     provider: "openai",
     model: "gpt-4o-mini",
     prompt: MELCHIOR_PROMPT,
+    identity: PERSONA_IDENTITY.MELCHIOR,
     legacyKeyEnv: "OPENAI_API_KEY",
     legacyModelEnv: "OPENAI_MODEL",
   },
@@ -52,6 +67,7 @@ const DEFAULTS: Record<
     provider: "anthropic",
     model: "claude-haiku-4-5",
     prompt: BALTHASAR_PROMPT,
+    identity: PERSONA_IDENTITY.BALTHASAR,
     legacyKeyEnv: "ANTHROPIC_API_KEY",
     legacyModelEnv: "ANTHROPIC_MODEL",
   },
@@ -60,6 +76,7 @@ const DEFAULTS: Record<
     provider: "google",
     model: "gemini-2.0-flash",
     prompt: CASPER_PROMPT,
+    identity: PERSONA_IDENTITY.CASPER,
     legacyKeyEnv: "GOOGLE_API_KEY",
     legacyModelEnv: "GOOGLE_MODEL",
   },
@@ -117,7 +134,15 @@ function buildFromEnv(id: MagiId): PersonaConfig {
     env(`${prefix}_MODEL`) ?? env(d.legacyModelEnv) ?? d.model;
   const apiKey = env(`${prefix}_API_KEY`) ?? env(d.legacyKeyEnv);
   const baseUrl = env(`${prefix}_BASE_URL`);
-  const systemPrompt = env(`${prefix}_SYSTEM_PROMPT`) ?? d.prompt;
+  const rawPrompt = env(`${prefix}_SYSTEM_PROMPT`);
+  const personaDescription = normalizePersonaDescription(
+    rawPrompt,
+    id,
+  );
+  // If no env override, use built-in identity (not full verdict prompt)
+  const identity = rawPrompt?.trim()
+    ? personaDescription
+    : d.identity;
   const timeoutMs = parseIntEnv(`${prefix}_TIMEOUT_MS`, 60_000);
   const maxOutputTokens = parseIntEnv(`${prefix}_MAX_OUTPUT_TOKENS`, 1024);
   const temperature = parseFloatEnv(`${prefix}_TEMPERATURE`, 0.3);
@@ -142,12 +167,27 @@ function buildFromEnv(id: MagiId): PersonaConfig {
     model,
     baseUrl: resolvedBase,
     apiKey,
-    systemPrompt,
+    personaDescription: identity,
+    systemPrompt: buildSystemPrompt(id, "verdict", identity),
     timeoutMs,
     maxOutputTokens,
     temperature,
     reasoningEffort,
   };
+}
+
+function resolveOverrideIdentity(
+  id: MagiId,
+  override: PersonaSettingsOverride | undefined,
+  baseIdentity: string,
+): string {
+  if (!override) return baseIdentity;
+  const raw =
+    override.personaDescription?.trim() ||
+    override.systemPrompt?.trim() ||
+    "";
+  if (!raw) return baseIdentity;
+  return normalizePersonaDescription(raw, id);
 }
 
 function applyOverride(
@@ -166,18 +206,27 @@ function applyOverride(
     baseUrl = "http://127.0.0.1:11434/v1";
   }
 
+  const identity = resolveOverrideIdentity(
+    base.id,
+    override,
+    base.personaDescription,
+  );
+
   return {
     ...base,
     provider: resolvedProvider,
     model: override.model ?? base.model,
     baseUrl,
-    systemPrompt: override.systemPrompt ?? base.systemPrompt,
+    personaDescription: identity,
+    systemPrompt: buildSystemPrompt(base.id, "verdict", identity),
     timeoutMs: override.timeoutMs ?? base.timeoutMs,
     maxOutputTokens: override.maxOutputTokens ?? base.maxOutputTokens,
     temperature: override.temperature ?? base.temperature,
+    // apiKey intentionally untouched — env only
   };
 }
 
+/** Sync read using cache (call ensureSettingsLoaded first in async paths). */
 export function getPersonaConfig(id: MagiId): PersonaConfig {
   const fromEnv = buildFromEnv(id);
   const file = getCachedOrEmpty();
@@ -185,6 +234,7 @@ export function getPersonaConfig(id: MagiId): PersonaConfig {
   return applyOverride(fromEnv, override);
 }
 
+/** Async: refresh settings file then return persona config. */
 export async function getPersonaConfigAsync(id: MagiId): Promise<PersonaConfig> {
   await loadSettingsFile();
   return getPersonaConfig(id);
@@ -199,11 +249,13 @@ export async function getAllPersonaConfigsAsync(): Promise<PersonaConfig[]> {
   return getAllPersonaConfigs();
 }
 
+/** Whether an API key is present in env for this persona (never returns the key). */
 export function personaApiKeyConfigured(id: MagiId): boolean {
   const d = DEFAULTS[id];
   return Boolean(env(`${id}_API_KEY`) ?? env(d.legacyKeyEnv));
 }
 
+/** Effective provider kind as configured for UI (may show ollama). */
 export function getPersonaUiProvider(id: MagiId): ProviderKind {
   const file = getCachedOrEmpty();
   const override = file.personas?.[id]?.provider;
