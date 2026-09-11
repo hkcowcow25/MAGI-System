@@ -8,9 +8,12 @@ import type { ProviderKind } from "@/lib/config/types";
 import {
   getSettingsPath,
   loadSettingsFile,
-  type SummarizerSettings,
 } from "@/lib/config/settings";
 import { isMockModeEnv } from "@/lib/auth/session";
+import {
+  peekSummarizerSettings,
+  resolveSummarizerKey,
+} from "@/lib/decision/summarizer-key";
 
 export type ApiKeyStatusLabel = "configured" | "unset";
 
@@ -37,7 +40,14 @@ export interface SettingsView {
   settingsPath: string;
   defaultMode: MagiMode;
   personas: Record<MagiId, PersonaSettingsView>;
-  summarizer: SummarizerSettings & {
+  summarizer: {
+    enabled: boolean;
+    provider?: ProviderKind;
+    model?: string;
+    baseUrl?: string;
+    timeoutMs?: number;
+    maxOutputTokens?: number;
+    temperature?: number;
     configured: boolean;
     apiKeyStatus: ApiKeyStatusLabel;
     apiKeyStatusLabel: string;
@@ -77,14 +87,17 @@ export async function buildSettingsView(
     };
   }
 
-  const sum = file.summarizer ?? {};
-  const sumKey =
-    Boolean(process.env.MAGI_SUMMARIZER_API_KEY?.trim()) ||
-    Boolean(process.env.MELCHIOR_API_KEY?.trim()) ||
-    Boolean(process.env.OPENAI_API_KEY?.trim());
-  const sumKeyStatus: ApiKeyStatusLabel = sumKey ? "configured" : "unset";
-  const sumModel =
-    process.env.MAGI_SUMMARIZER_MODEL?.trim() || sum.model || "";
+  // Same resolve helpers as runtime (defaults < env < settings JSON).
+  const peeked = peekSummarizerSettings();
+  // Checkbox reflects saved enabled boolean only (default false) — not "configured".
+  const savedEnabled = file.summarizer?.enabled === true;
+  const providerForKey: ProviderKind =
+    peeked.provider === "ollama" ? "openai-compatible" : peeked.provider;
+  const keyProbe = resolveSummarizerKey(providerForKey, {
+    baseUrl: peeked.baseUrl || undefined,
+  });
+  // openai-compatible may legitimately use placeholder lm-studio
+  const sumKeyConfigured = Boolean(keyProbe.apiKey) && !keyProbe.configError;
 
   return {
     unlocked,
@@ -93,18 +106,18 @@ export async function buildSettingsView(
     defaultMode: file.defaultMode ?? "verdict",
     personas,
     summarizer: {
-      ...sum,
-      model: sumModel || sum.model,
-      provider:
-        (process.env.MAGI_SUMMARIZER_PROVIDER?.trim() as ProviderKind) ||
-        sum.provider,
-      baseUrl:
-        process.env.MAGI_SUMMARIZER_BASE_URL?.trim() || sum.baseUrl || "",
-      configured: Boolean(sumModel),
-      apiKeyStatus: sumKeyStatus,
-      apiKeyStatusLabel: keyLabel(sumKeyStatus),
+      enabled: savedEnabled,
+      provider: peeked.provider,
+      model: peeked.model,
+      baseUrl: peeked.baseUrl,
+      timeoutMs: peeked.timeoutMs,
+      maxOutputTokens: peeked.maxOutputTokens,
+      temperature: peeked.temperature,
+      configured: Boolean(peeked.model.trim()),
+      apiKeyStatus: sumKeyConfigured ? "configured" : "unset",
+      apiKeyStatusLabel: keyLabel(sumKeyConfigured ? "configured" : "unset"),
     },
     precedenceNote:
-      "非機密設定優先順序：預設值 < 環境變數 < /data/magi-settings.json。API 金鑰只來自環境變數，設定頁無法寫入或讀取金鑰值。人格描述唔應包含 JSON／投票格式；格式由 Verdict／Council 模式自動附加。",
+      "非機密設定優先順序：預設值 < 環境變數 < /data/magi-settings.json（設定檔覆蓋環境）。API 金鑰只來自環境變數，設定頁無法寫入或讀取金鑰值。摘要「啟用」掣只反映已儲存嘅 enabled（預設關閉）；唔會因為已設定 model 就自動勾選。人格描述唔應包含 JSON／投票格式；格式由 Verdict／Council 模式自動附加。",
   };
 }
