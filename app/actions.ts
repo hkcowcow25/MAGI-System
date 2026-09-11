@@ -26,6 +26,8 @@ import {
 } from "@/lib/config/settings-view";
 import {
   updateSettingsFromClient,
+  applyPromptMigration,
+  resetPersonaDescription,
   type PersonaSettingsOverride,
   type SummarizerSettings,
 } from "@/lib/config/settings";
@@ -297,4 +299,62 @@ export async function testConnection(
     model: result.model,
     latencyMs: result.latencyMs,
   };
+}
+
+
+/** 「套用遷移」— strip Verdict/Council format from saved persona text; keep identity. */
+export async function migratePromptFormats(): Promise<
+  | ({ ok: true } & SettingsView)
+  | { ok: false; error: string; code: "locked" | "not_configured" | "invalid" }
+> {
+  const gate = await requireUnlocked();
+  if (gate) {
+    const code =
+      gate.code === "locked" || gate.code === "not_configured"
+        ? gate.code
+        : "invalid";
+    return { ok: false, code, error: gate.error };
+  }
+  try {
+    await applyPromptMigration();
+    const view = await buildSettingsView(true);
+    return { ok: true, ...view };
+  } catch (err) {
+    return {
+      ok: false,
+      code: "invalid",
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/** 「還原預設人格描述」— resets identity to built-in; keeps provider/model. */
+export async function resetDefaultPersonaDescription(
+  persona: MagiId,
+): Promise<
+  | ({ ok: true } & SettingsView)
+  | { ok: false; error: string; code: "locked" | "not_configured" | "invalid" }
+> {
+  const gate = await requireUnlocked();
+  if (gate) {
+    const code =
+      gate.code === "locked" || gate.code === "not_configured"
+        ? gate.code
+        : "invalid";
+    return { ok: false, code, error: gate.error };
+  }
+  if (!["MELCHIOR", "BALTHASAR", "CASPER"].includes(persona)) {
+    return { ok: false, code: "invalid", error: "未知人格" };
+  }
+  try {
+    await resetPersonaDescription(persona);
+    const view = await buildSettingsView(true);
+    return { ok: true, ...view };
+  } catch (err) {
+    return {
+      ok: false,
+      code: "invalid",
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
