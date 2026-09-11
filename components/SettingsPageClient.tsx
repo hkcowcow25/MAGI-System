@@ -7,6 +7,7 @@ import {
   getSettings,
   saveSettings,
   testConnection,
+  testSummarizer,
   unlockAccessCode,
   migratePromptFormats,
   resetDefaultPersonaDescription,
@@ -31,8 +32,12 @@ export default function SettingsPage() {
   const [precedenceNote, setPrecedenceNote] = useState("");
   const [mockMode, setMockMode] = useState(false);
   const [form, setForm] = useState<FormState | null>(null);
-  const [testMsg, setTestMsg] = useState<Partial<Record<MagiId, string>>>({});
+  const [testMsg, setTestMsg] = useState<Partial<Record<MagiId, string>>>({{}});
   const [testing, setTesting] = useState<MagiId | null>(null);
+  const [testingSummarizer, setTestingSummarizer] = useState(false);
+  const [summarizerTestMsg, setSummarizerTestMsg] = useState<string | null>(
+    null,
+  );
   const [migrating, setMigrating] = useState(false);
 
   const load = useCallback(async () => {
@@ -154,6 +159,33 @@ export default function SettingsPage() {
     }
   };
 
+  const handleTestSummarizer = async () => {
+    setTestingSummarizer(true);
+    setSummarizerTestMsg("測試中…");
+    const res = await testSummarizer();
+    setTestingSummarizer(false);
+    if (res.ok) {
+      const bits = [res.message, res.provider, res.model]
+        .filter(Boolean)
+        .join(" · ");
+      const preview = res.preview ? ` 預覽：${res.preview}` : "";
+      setSummarizerTestMsg(`${bits}${preview}`);
+    } else {
+      const bits = [
+        res.stage,
+        res.provider,
+        res.model,
+        res.httpStatus != null ? `HTTP ${res.httpStatus}` : null,
+        res.finish_reason ? `finish_reason=${res.finish_reason}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      setSummarizerTestMsg(
+        `${res.error || res.message || "測試失敗"}${bits ? `（${bits}）` : ""}`,
+      );
+    }
+  };
+
   const handleApplyMigration = async () => {
     setMigrating(true);
     setError(null);
@@ -255,6 +287,9 @@ export default function SettingsPage() {
               setForm={setForm}
               saving={saving}
               onSave={() => void handleSave()}
+              testingSummarizer={testingSummarizer}
+              summarizerTestMsg={summarizerTestMsg}
+              onTestSummarizer={() => void handleTestSummarizer()}
             />
           </>
         )}
