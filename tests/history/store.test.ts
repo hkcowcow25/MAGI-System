@@ -271,4 +271,91 @@ describe("history store", () => {
     const again = await listDeliberations({ q: "persist check" });
     expect(again.total).toBe(1);
   });
+
+  it("retains synthesis_error in stored council outcome", async () => {
+    const input = buildHistoryFromEngineResult({
+      topic: "synthesis error retained",
+      source: "web",
+      durationMs: 12,
+      result: {
+        mode: "council",
+        status: "complete",
+        opinions: {
+          MELCHIOR: {
+            id: "MELCHIOR",
+            number: 1,
+            unitStatus: "ok",
+            proposal: "A",
+            rationale: "r",
+            risks: [],
+            missing_information: [],
+          },
+          BALTHASAR: {
+            id: "BALTHASAR",
+            number: 2,
+            unitStatus: "ok",
+            proposal: "B",
+            rationale: "r",
+            risks: [],
+            missing_information: [],
+          },
+          CASPER: {
+            id: "CASPER",
+            number: 3,
+            unitStatus: "ok",
+            proposal: "C",
+            rationale: "r",
+            risks: [],
+            missing_information: [],
+          },
+        },
+        consensus: [],
+        disagreements: [],
+        recommendation: "extractive fallback",
+        minority_views: [],
+        missing_information: [],
+        synthesis_mode: "extractive",
+        synthesis_error: {
+          stage: "api",
+          message: "400 Bad Request: User location is not supported for the API use.",
+          provider: "google",
+          model: "gemini-2.0-flash",
+          httpStatus: 400,
+        },
+      },
+      models: {
+        MELCHIOR: { provider: "openai", model: "m1" },
+        BALTHASAR: { provider: "anthropic", model: "m2" },
+        CASPER: { provider: "google", model: "m3" },
+      },
+    });
+    const rec = await insertDeliberation(input);
+    expect(rec.units).toBeTruthy();
+    const outcome = rec.outcome as Record<string, unknown>;
+    expect(outcome.synthesis_error).toMatchObject({
+      stage: "api",
+      httpStatus: 400,
+      provider: "google",
+    });
+    expect(String((outcome.synthesis_error as { message: string }).message)).toContain(
+      "User location is not supported",
+    );
+  });
+
+  it("records once per engine run (single-record semantics)", async () => {
+    await runMagiEngine("single-record probe web", "verdict", {
+      source: "web",
+      recordHistory: true,
+    });
+    await runMagiEngine("single-record probe api", "verdict", {
+      source: "api",
+      recordHistory: true,
+    });
+    const web = await listDeliberations({ q: "single-record probe web" });
+    const api = await listDeliberations({ q: "single-record probe api" });
+    expect(web.total).toBe(1);
+    expect(api.total).toBe(1);
+    expect(web.items[0]?.source).toBe("web");
+    expect(api.items[0]?.source).toBe("api");
+  });
 });
