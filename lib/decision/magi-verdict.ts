@@ -8,6 +8,7 @@ import {
 import { getProviderAdapter, parseUnitAnalysis } from "@/lib/providers";
 import { mockUnitAnalysis } from "@/lib/providers/mock";
 import { toAsciiHyphens } from "@/lib/auth/session";
+import { loadSettingsFile } from "@/lib/config/settings";
 
 export class MagiConfigError extends Error {
   constructor(message: string) {
@@ -166,6 +167,7 @@ function suggestNextSteps(
 export async function runMagiDeliberation(
   topic: string,
 ): Promise<MagiDeliberationResult> {
+  await loadSettingsFile();
   const trimmed = topic.trim();
   if (!trimmed) {
     throw new Error("Topic/question must not be empty");
