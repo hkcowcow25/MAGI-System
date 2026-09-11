@@ -95,6 +95,7 @@ export function buildHistoryFromEngineResult(args: {
       minority_views: result.minority_views,
       missing_information: result.missing_information,
       synthesis_mode: result.synthesis_mode,
+      synthesis_error: result.synthesis_error,
     }),
     errors: errors.length ? errors : null,
   };
