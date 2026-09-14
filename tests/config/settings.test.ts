@@ -216,7 +216,8 @@ describe("summarizer enabled / precedence / baseUrl clear", () => {
     expect(resolved?.model).toBe("from-file");
   });
 
-  it("explicit baseUrl clear removes override (LM Studio → Google)", async () => {
+  it("explicit baseUrl clear persists over environment (LM Studio → Google)", async () => {
+    process.env.MAGI_SUMMARIZER_BASE_URL = "http://env.example:1234/v1";
     await updateSettingsFromClient({
       summarizer: {
         enabled: true,
@@ -239,8 +240,30 @@ describe("summarizer enabled / precedence / baseUrl clear", () => {
     clearSettingsCache();
     loaded = await loadSettingsFile();
     expect(loaded.summarizer?.provider).toBe("google");
-    expect(loaded.summarizer?.baseUrl).toBeUndefined();
+    expect(loaded.summarizer?.baseUrl).toBe("");
+    const { peekSummarizerSettings } = await import("@/lib/decision/summarizer-key");
+    expect(peekSummarizerSettings().baseUrl).toBe("");
+    expect((await buildSettingsView(true)).summarizer.baseUrl).toBe("");
     const raw = await readFile(getSettingsPath(), "utf8");
     expect(raw).not.toContain("1234");
   });
+  it("configured model without enabled stays disabled in UI and runtime", async () => {
+    delete process.env.MAGI_SUMMARIZER_ENABLED;
+    await saveSettingsFile({ version: 1, summarizer: { model: "sonar" } });
+    const { resolveSummarizer } = await import("@/lib/decision/summarizer-key");
+    expect((await buildSettingsView(true)).summarizer.enabled).toBe(false);
+    expect(resolveSummarizer()).toBeNull();
+  });
+
+  it("persists persona structured output and null URL clearing across reload", async () => {
+    await updateSettingsFromClient({ personas: { MELCHIOR: {
+      councilStructuredOutput: true, baseUrl: null,
+    } } });
+    clearSettingsCache();
+    await loadSettingsFile();
+    const { getPersonaConfig } = await import("@/lib/config/persona");
+    expect(getPersonaConfig("MELCHIOR").baseUrl).toBeUndefined();
+    expect(getPersonaConfig("MELCHIOR").councilStructuredOutput).toBe(true);
+  });
+
 });

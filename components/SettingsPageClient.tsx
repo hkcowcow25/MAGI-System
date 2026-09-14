@@ -120,6 +120,7 @@ export default function SettingsPage() {
               timeoutMs: p.timeoutMs,
               maxOutputTokens: p.maxOutputTokens,
               temperature: p.temperature,
+            councilStructuredOutput: p.councilStructuredOutput === true,
             },
           ];
         }),
@@ -183,6 +184,7 @@ export default function SettingsPage() {
             timeoutMs: p.timeoutMs,
             maxOutputTokens: p.maxOutputTokens,
             temperature: p.temperature,
+            councilStructuredOutput: p.councilStructuredOutput === true,
           },
         ];
       }),

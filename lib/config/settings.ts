@@ -11,6 +11,8 @@ import {
 } from "@/lib/prompts";
 
 export interface PersonaSettingsOverride {
+  /** Opt-in JSON schema for Council on compatible servers such as LM Studio. */
+  councilStructuredOutput?: boolean;
   provider?: ProviderKind;
   model?: string;
   /** Empty string or null clears a previously saved baseUrl override. */
@@ -88,12 +90,14 @@ function sanitizePersona(raw: unknown): PersonaSettingsOverride | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const o = raw as Record<string, unknown>;
   const out: PersonaSettingsOverride = {};
+  if (typeof o.councilStructuredOutput === "boolean") {
+    out.councilStructuredOutput = o.councilStructuredOutput;
+  }
   if (isProvider(o.provider)) out.provider = o.provider;
   const model = asNonEmptyString(o.model);
   if (model) out.model = model;
-  if (typeof o.baseUrl === "string") {
-    const b = o.baseUrl.trim();
-    if (b) out.baseUrl = b;
+  if (o.baseUrl === null || typeof o.baseUrl === "string") {
+    out.baseUrl = o.baseUrl?.trim() ?? "";
   }
   const rawDesc =
     (typeof o.personaDescription === "string" && o.personaDescription.trim()
@@ -124,8 +128,8 @@ function sanitizeSummarizer(raw: unknown): SummarizerSettings | undefined {
   if (isProvider(o.provider)) out.provider = o.provider;
   const model = asNonEmptyString(o.model);
   if (model) out.model = model;
-  if (typeof o.baseUrl === "string" && o.baseUrl.trim()) {
-    out.baseUrl = o.baseUrl.trim();
+  if (o.baseUrl === null || typeof o.baseUrl === "string") {
+    out.baseUrl = o.baseUrl?.trim() ?? "";
   }
   const timeoutMs = asPositiveInt(o.timeoutMs);
   if (timeoutMs !== undefined) out.timeoutMs = timeoutMs;
@@ -322,7 +326,7 @@ export async function updateSettingsFromClient(input: {
         ...sanitized,
       };
       if ("baseUrl" in patch && isBaseUrlClear(patch.baseUrl)) {
-        delete merged.baseUrl;
+        merged.baseUrl = "";
       }
       next.personas![id] = merged;
     }
@@ -340,7 +344,7 @@ export async function updateSettingsFromClient(input: {
       merged.enabled = input.summarizer.enabled;
     }
     if ("baseUrl" in input.summarizer && isBaseUrlClear(input.summarizer.baseUrl)) {
-      delete merged.baseUrl;
+      merged.baseUrl = "";
     }
     next.summarizer = merged;
   }

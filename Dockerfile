@@ -1,28 +1,14 @@
 # MAGI System - Next.js production image for Synology / Docker
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json ./
-# Lock file is optional: gzip+base64 parts may be absent or incomplete when
-# pushed via MCP size limits. Prefer npm ci when a valid lock reassembles;
-# otherwise fall back to npm install (sql.js etc. come from package.json).
-COPY package-lock.json.gz.b64.part* ./
-RUN set -eux; \
-  if ls package-lock.json.gz.b64.part* >/dev/null 2>&1 \
-    && cat package-lock.json.gz.b64.part* | base64 -d | gunzip > package-lock.json \
-    && npm ci; then \
-    rm -f package-lock.json.gz.b64.part*; \
-  else \
-    echo "WARN: lock parts missing/invalid; falling back to npm install"; \
-    rm -f package-lock.json.gz.b64.part* package-lock.json; \
-    npm install; \
-  fi
+COPY package.json package-lock.json ./
+RUN npm ci
 
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN rm -f package-lock.json.gz.b64 package-lock.json.gz.b64.part* \
-  && npm run build
+RUN npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app

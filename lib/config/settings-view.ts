@@ -18,6 +18,7 @@ import {
 export type ApiKeyStatusLabel = "configured" | "unset";
 
 export interface PersonaSettingsView {
+  councilStructuredOutput?: boolean;
   id: MagiId;
   provider: ProviderKind;
   model: string;
@@ -82,6 +83,7 @@ export async function buildSettingsView(
       timeoutMs: cfg.timeoutMs,
       maxOutputTokens: cfg.maxOutputTokens,
       temperature: cfg.temperature,
+      councilStructuredOutput: cfg.councilStructuredOutput === true,
       apiKeyStatus,
       apiKeyStatusLabel: keyLabel(apiKeyStatus),
     };

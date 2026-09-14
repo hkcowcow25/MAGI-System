@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, access } from "node:fs/promises";
+import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -20,6 +21,17 @@ import {
 } from "@/lib/history/record";
 import { clearSettingsCache } from "@/lib/config/settings";
 import { runMagiEngine } from "@/lib/decision/engine";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, rename: vi.fn(actual.rename) };
+});
+
+const testModels = {
+  MELCHIOR: { provider: "openai-compatible", model: "local" },
+  BALTHASAR: { provider: "openai-compatible", model: "cloud" },
+  CASPER: { provider: "openai-compatible", model: "cloud" },
+};
 
 describe("history store", () => {
   let dir: string;
@@ -358,4 +370,33 @@ describe("history store", () => {
     expect(web.items[0]?.source).toBe("web");
     expect(api.items[0]?.source).toBe("api");
   });
+  it("serializes concurrent cold writes and preserves all rows after reopen", async () => {
+    const inputs = Array.from({ length: 12 }, (_, i) => buildHistoryFromFailure({
+      topic: `concurrent-${i}`, mode: "council", source: "web", durationMs: 1,
+      error: new Error("test"), models: testModels,
+    }));
+    await Promise.all(inputs.map(insertDeliberation));
+    expect((await listDeliberations()).total).toBe(12);
+    await closeHistoryDb();
+    expect((await listDeliberations()).total).toBe(12);
+  });
+
+  it("failed file replacement preserves memory and disk and queue recovers", async () => {
+    const input = buildHistoryFromFailure({ topic: "durable", mode: "council", source: "web",
+      durationMs: 1, error: new Error("test"), models: testModels });
+    const saved = await insertDeliberation(input);
+    const original = await fsPromises.readFile(getHistoryDbPath());
+    const rename = vi.mocked(fsPromises.rename).mockRejectedValueOnce(new Error("disk failure"));
+    try {
+      await expect(deleteDeliberation(saved.id)).rejects.toThrow("disk failure");
+    } finally { rename.mockClear(); }
+    expect(await getDeliberation(saved.id)).not.toBeNull();
+    expect(await fsPromises.readFile(getHistoryDbPath())).toEqual(original);
+    expect((await fsPromises.readdir(dir)).some((f) => f.endsWith(".tmp"))).toBe(false);
+    await closeHistoryDb();
+    expect(await getDeliberation(saved.id)).not.toBeNull();
+    expect(await deleteDeliberation(saved.id)).toBe(true);
+    expect(await deleteDeliberation(saved.id)).toBe(false);
+  });
+
 });

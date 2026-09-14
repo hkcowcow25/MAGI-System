@@ -10,6 +10,8 @@ import {
   type PersonaConfig,
 } from "@/lib/config/persona";
 import { loadSettingsFile } from "@/lib/config/settings";
+import { COUNCIL_RESPONSE_SCHEMA } from "@/lib/providers/council-schema";
+import { assertCompletionNotTruncated } from "@/lib/providers/completion-validation";
 import { getProviderAdapter } from "@/lib/providers";
 import {
   parseCouncilOpinion,
@@ -95,12 +97,15 @@ async function runCouncilUnit(
         apiKey: config.apiKey,
         baseUrl: config.baseUrl,
         reasoningEffort: config.reasoningEffort,
+        responseSchema: config.provider === "openai-compatible" && config.councilStructuredOutput
+          ? COUNCIL_RESPONSE_SCHEMA : undefined,
       }),
       config.timeoutMs,
       config.id,
     );
 
     try {
+      assertCompletionNotTruncated(completion, config.id, config.maxOutputTokens);
       const analysis = parseCouncilOpinion(completion.text);
       debugLlmLog({
         mode: "council",

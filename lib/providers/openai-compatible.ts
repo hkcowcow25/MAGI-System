@@ -3,7 +3,7 @@ import type { CompletionRequest, CompletionResult, ProviderAdapter } from "./typ
 
 /**
  * Pure request-body builder for openai-compatible chat completions.
- * Intentionally omits response_format — mode schemas live in system prompts.
+ * Omits response_format unless the caller explicitly opts into a mode schema.
  */
 export function buildOpenAICompatibleChatParams(req: CompletionRequest) {
   return {
@@ -11,6 +11,12 @@ export function buildOpenAICompatibleChatParams(req: CompletionRequest) {
     messages: req.messages,
     max_tokens: req.maxOutputTokens,
     temperature: req.temperature,
+    ...(req.responseSchema ? {
+      response_format: {
+        type: "json_schema" as const,
+        json_schema: { name: "magi_response", strict: true, schema: req.responseSchema },
+      },
+    } : {}),
   };
 }
 

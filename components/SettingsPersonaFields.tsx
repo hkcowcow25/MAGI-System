@@ -85,6 +85,13 @@ export function SettingsPersonaFields({
               return (
                 <section key={id} className="settings-section persona-card">
                   <h2>{id}</h2>
+                  {(p.provider === "openai-compatible" || p.provider === "ollama") && (
+                    <label className="settings-label">
+                      <input type="checkbox" checked={p.councilStructuredOutput === true}
+                        onChange={(e) => updatePersona(id, "councilStructuredOutput", e.target.checked)} />
+                      議會 JSON 結構輸出（選用；伺服器須支援 JSON Schema，例如 LM Studio）
+                    </label>
+                  )}
                   <label className="settings-label">
                     Provider
                     <select

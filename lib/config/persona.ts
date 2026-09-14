@@ -17,6 +17,7 @@ import type { ProviderKind } from "@/lib/config/types";
 export type { ProviderKind } from "@/lib/config/types";
 
 export interface PersonaConfig {
+  councilStructuredOutput?: boolean;
   id: MagiId;
   number: 1 | 2 | 3;
   provider: ProviderKind;
@@ -202,8 +203,8 @@ function applyOverride(
 
   let baseUrl: string | undefined;
   if (override.baseUrl === null || override.baseUrl === "") {
-    // Explicit clear — fall back to env/default layer (base).
-    baseUrl = base.baseUrl;
+    // Explicit clear overrides the environment too.
+    baseUrl = undefined;
   } else if (override.baseUrl !== undefined) {
     baseUrl = override.baseUrl;
   } else {
@@ -229,6 +230,7 @@ function applyOverride(
     timeoutMs: override.timeoutMs ?? base.timeoutMs,
     maxOutputTokens: override.maxOutputTokens ?? base.maxOutputTokens,
     temperature: override.temperature ?? base.temperature,
+    councilStructuredOutput: override.councilStructuredOutput ?? false,
     // apiKey intentionally untouched — env only
   };
 }
