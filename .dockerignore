@@ -4,9 +4,10 @@
 .venv
 node_modules
 font
-scripts
+coverage
+tests
 *.md
-.env.local
-.env*.local
+.env
+.env.*
+!.env.local.example
 docker-compose.yml
-Dockerfile

@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MagiId, MagiResult, PartialResults, Vote } from "@/types/magi";
+import { MagiId, MagiResult, PartialResults, Verdict } from "@/types/magi";
 
-function voteBackground(vote: Vote | null): string {
-  if (vote === "APPROVE") return "#52e691";
-  if (vote === "REJECT") return "#a41413";
-  if (vote === "ABSTAIN") return "#3caee0";
+function unitBackground(result: MagiResult | undefined): string {
+  if (!result) return "#3caee0";
+  if (result.unitStatus === "error") return "#7a4400";
+  if (result.vote === "APPROVE") return "#52e691";
+  if (result.vote === "REJECT") return "#a41413";
+  if (result.vote === "ABSTAIN") return "#3caee0";
   return "#3caee0";
 }
 
@@ -16,6 +18,7 @@ function verdictText(v: string): string {
     REJECT: "否 決",
     ABSTAIN: "棄 権",
     DEADLOCK: "膠 着",
+    INCOMPLETE: "不 完",
   };
   return map[v] ?? "---";
 }
@@ -24,7 +27,13 @@ function verdictColor(v: string): string {
   if (v === "APPROVE") return "#52e691";
   if (v === "REJECT") return "#a41413";
   if (v === "ABSTAIN") return "#3caee0";
+  if (v === "INCOMPLETE") return "#f7ca62";
   return "#ff8d00";
+}
+
+function voteLabel(result: MagiResult): string {
+  if (result.unitStatus === "error") return "異 常";
+  return verdictText(result.vote ?? "ABSTAIN");
 }
 
 function rand(digits: number) {
@@ -36,7 +45,7 @@ function rand(digits: number) {
 interface Props {
   partialResults: PartialResults;
   processingUnits: Set<MagiId>;
-  finalVerdict: (Vote | "DEADLOCK") | null;
+  finalVerdict: Verdict | null;
 }
 
 const SHAPES: Array<{ id: MagiId; label: string; cls: string }> = [
@@ -56,8 +65,9 @@ export default function MagiDiagram({ partialResults, processingUnits, finalVerd
   const isProcessing = processingUnits.size > 0;
 
   useEffect(() => {
-    if (processingUnits.size === 3) {
-      // 新しい審議が始まった時だけリセット
+    if (processingUnits.size !== 3) return;
+    // Defer setState so the effect body stays sync-free (eslint react-hooks/set-state-in-effect).
+    const timer = setTimeout(() => {
       setFlickerDelays({
         BALTHASAR: `${Math.floor(Math.random() * 180)}ms`,
         CASPER: `${Math.floor(Math.random() * 180)}ms`,
@@ -65,7 +75,8 @@ export default function MagiDiagram({ partialResults, processingUnits, finalVerd
       });
       setCode(rand(3));
       setExt(rand(4));
-    }
+    }, 0);
+    return () => clearTimeout(timer);
   }, [processingUnits.size]);
 
   const modalResult: MagiResult | null = modalId ? (partialResults[modalId] ?? null) : null;
@@ -77,7 +88,6 @@ export default function MagiDiagram({ partialResults, processingUnits, finalVerd
         <div className="magi-conn conn-bm" />
         <div className="magi-conn conn-cm" />
 
-        {/* System status */}
         <div className="magi-sys-status">
           <div>CODE:{code}</div>
           <div className="magi-sys-status-inner">
@@ -88,7 +98,6 @@ export default function MagiDiagram({ partialResults, processingUnits, finalVerd
           </div>
         </div>
 
-        {/* Verdict badge */}
         <div
           className={`magi-verdict${isProcessing ? " flicker" : ""}`}
           style={{
@@ -101,7 +110,6 @@ export default function MagiDiagram({ partialResults, processingUnits, finalVerd
           </div>
         </div>
 
-        {/* Decorative headers */}
         <div className="magi-header-deco left">
           <div className="magi-header-deco-bar" />
           <div className="magi-header-deco-bar" />
@@ -117,11 +125,10 @@ export default function MagiDiagram({ partialResults, processingUnits, finalVerd
           <div className="magi-header-deco-bar" />
         </div>
 
-        {/* Three MAGI units */}
         {SHAPES.map(({ id, label, cls }) => {
           const result = partialResults[id];
           const processing = processingUnits.has(id);
-          const bg = voteBackground(result?.vote ?? null);
+          const bg = unitBackground(result);
           return (
             <div
               key={id}
@@ -145,7 +152,6 @@ export default function MagiDiagram({ partialResults, processingUnits, finalVerd
         <div className="magi-center-title">MAGI</div>
       </div>
 
-      {/* Reasoning modal */}
       {modalResult && (
         <div className="modal-overlay" onClick={() => setModalId(null)}>
           <div className="modal-box" onClick={(e) => e.stopPropagation()}>
@@ -156,17 +162,20 @@ export default function MagiDiagram({ partialResults, processingUnits, finalVerd
               <button className="modal-close" onClick={() => setModalId(null)}>✕</button>
             </div>
             <div className="modal-body">
-              {modalResult.isCritical && (
+              {modalResult.unitStatus === "error" && (
+                <div className="modal-critical">⚠ UNIT ERROR — 技術異常（非棄権）</div>
+              )}
+              {modalResult.isCritical && modalResult.unitStatus === "ok" && (
                 <div className="modal-critical">⚠ CRITICAL MATTER — 重大議題</div>
               )}
               <div
                 className="modal-vote"
                 style={{
-                  color: voteBackground(modalResult.vote),
-                  borderColor: voteBackground(modalResult.vote),
+                  color: unitBackground(modalResult),
+                  borderColor: unitBackground(modalResult),
                 }}
               >
-                {verdictText(modalResult.vote)}
+                {voteLabel(modalResult)}
               </div>
               <p className="modal-reasoning">{modalResult.reasoning}</p>
               {modalResult.error && (

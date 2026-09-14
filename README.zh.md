@@ -68,6 +68,10 @@ docker compose up
 
 ## 環境變數
 
+完整 per-persona 設定見 `.env.local.example`（`MELCHIOR_*` / `BALTHASAR_*` / `CASPER_*`、`MAGI_API_KEY`、`MAGI_MOCK_MODE`）。
+
+### 常見／舊版變數
+
 | 變數名稱            | 說明                              | 預設值             |
 | ------------------- | --------------------------------- | ------------------ |
 | `OPENAI_API_KEY`    | OpenAI API 金鑰（MELCHIOR-1）     | —                  |
@@ -85,6 +89,30 @@ docker compose up
 3. 率先完成的電腦立即停止閃爍並顯示結果
 4. 三台全部完成後，以多數決顯示最終裁決
 5. 點擊任一電腦可查看詳細推理說明
+
+## Fork MVP（OpenAI 相容 API）
+
+本 fork 新增共用 MAGI 決策引擎、各人格獨立 Provider 設定，以及畀 SillyTavern 等客戶端使用嘅 OpenAI 相容 HTTP API。
+
+| 端點 | 認證 | 說明 |
+| ---- | ---- | ---- |
+| `GET /healthz` | 無 | 存活探測 |
+| `GET /v1/models` | Bearer `MAGI_API_KEY` | 只列出 `magi-verdict` |
+| `POST /v1/chat/completions` | Bearer `MAGI_API_KEY` | 只支援 `stream=false`；一次請求 = 三機審議 |
+
+- 技術失敗會標成 `unitStatus: "error"`，整體結果為 **不完（INCOMPLETE）**——**唔會**假裝成棄権（ABSTAIN）。
+- 開發可用 `MAGI_MOCK_MODE=true`；正式環境缺 key 時必須明確失敗，唔會默默 mock。
+- 詳見 `.env.local.example`、`docs/DEPLOY-SYNOLOGY.md`、`docs/SILLYTAVERN.md`、`scripts/test-api.ps1`。
+
+### 測試
+
+```bash
+npm test
+```
+
+### 致謝／來源
+
+上游專案：**[hirakujira/MAGI-System](https://github.com/hirakujira/MAGI-System)**。本 fork 保留對原作者嘅致謝。
 
 ## 版權聲明
 
