@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers";
 import type {
+  CouncilOpinion,
   MagiCouncilResult,
   MagiDeliberationResult,
   MagiId,
@@ -35,6 +36,10 @@ import {
   testPersonaConnection,
   type ConnectionTestResult,
 } from "@/lib/decision/test-connection";
+import {
+  runSummarizerTest,
+  type SummarizerTestResult,
+} from "@/lib/decision/test-summarizer";
 
 export type DeliberateSuccess = MagiDeliberationResult & {
   ok: true;
@@ -146,7 +151,7 @@ export async function deliberate(
   }
 
   try {
-    const result = await runMagiEngine(trimmed, mode);
+    const result = await runMagiEngine(trimmed, mode, { source: "web" });
     if (result.mode === "council") {
       return {
         ok: true,
@@ -160,6 +165,7 @@ export async function deliberate(
         minority_views: result.minority_views,
         missing_information: result.missing_information,
         synthesis_mode: result.synthesis_mode,
+        synthesis_error: result.synthesis_error,
       };
     }
     return {
@@ -357,4 +363,49 @@ export async function resetDefaultPersonaDescription(
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/**
+ * Standalone summarizer test (Settings 「測試摘要」).
+ * Does NOT run three personas — uses fixture opinions JSON.
+ */
+export async function testSummarizer(
+  sampleOpinions?: CouncilOpinion[],
+): Promise<
+  | ({ ok: true } & SummarizerTestResult)
+  | ({ ok: false } & SummarizerTestResult & {
+      error: string;
+      code: "locked" | "not_configured" | "invalid";
+    })
+> {
+  const gate = await requireUnlocked();
+  if (gate) {
+    const code =
+      gate.code === "locked" || gate.code === "not_configured"
+        ? gate.code
+        : "invalid";
+    return {
+      ok: false as const,
+      code,
+      error: gate.error,
+      stage: "config",
+      message: gate.error,
+    };
+  }
+  const result = await runSummarizerTest(sampleOpinions);
+  if (result.ok) {
+    const { ok: _ok, ...rest } = result;
+    void _ok;
+    return { ok: true as const, ...rest, stage: result.stage, message: result.message };
+  }
+  const { ok: _okFail, ...restFail } = result;
+  void _okFail;
+  return {
+    ok: false as const,
+    code: "invalid" as const,
+    error: result.message,
+    ...restFail,
+    stage: result.stage,
+    message: result.message,
+  };
 }

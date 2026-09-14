@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     const { topic } = extractTopicFromMessages(
       (body.messages as IncomingMessage[]) ?? [],
     );
-    const result = await runMagiEngine(topic, mode);
+    const result = await runMagiEngine(topic, mode, { source: "api" });
     const content = formatEngineContent(result);
     const id = `chatcmpl-magi-${Date.now().toString(36)}`;
     const created = Math.floor(Date.now() / 1000);
@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
             minority_views: result.minority_views,
             missing_information: result.missing_information,
             synthesis_mode: result.synthesis_mode,
+            synthesis_error: result.synthesis_error,
           }
         : {
             mode: "verdict" as const,

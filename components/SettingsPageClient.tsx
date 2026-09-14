@@ -7,12 +7,14 @@ import {
   getSettings,
   saveSettings,
   testConnection,
+  testSummarizer,
   unlockAccessCode,
   migratePromptFormats,
   resetDefaultPersonaDescription,
 } from "@/app/actions";
 import {
   PERSONAS,
+  formFingerprint,
   viewToForm,
   type FormState,
   type PersonaForm,
@@ -33,6 +35,11 @@ export default function SettingsPage() {
   const [form, setForm] = useState<FormState | null>(null);
   const [testMsg, setTestMsg] = useState<Partial<Record<MagiId, string>>>({});
   const [testing, setTesting] = useState<MagiId | null>(null);
+  const [testingSummarizer, setTestingSummarizer] = useState(false);
+  const [summarizerTestMsg, setSummarizerTestMsg] = useState<string | null>(
+    null,
+  );
+  const [savedFingerprint, setSavedFingerprint] = useState<string>("");
   const [migrating, setMigrating] = useState(false);
 
   const load = useCallback(async () => {
@@ -50,7 +57,9 @@ export default function SettingsPage() {
     setSettingsPath(res.settingsPath);
     setPrecedenceNote(res.precedenceNote);
     setMockMode(res.mockMode);
-    setForm(viewToForm(res));
+    const nextForm = viewToForm(res);
+    setForm(nextForm);
+    setSavedFingerprint(formFingerprint(nextForm));
     setLoading(false);
   }, []);
 
@@ -104,6 +113,7 @@ export default function SettingsPage() {
             {
               provider: p.provider,
               model: p.model,
+              // Empty string clears persisted baseUrl override
               baseUrl: p.baseUrl,
               personaDescription: p.systemPrompt,
               systemPrompt: p.systemPrompt,
@@ -114,24 +124,27 @@ export default function SettingsPage() {
           ];
         }),
       ) as unknown as NonNullable<Parameters<typeof saveSettings>[0]["personas"]>,
-      summarizer: form.summarizer.enabled
-        ? {
-            enabled: true,
-            provider: form.summarizer.provider,
-            model: form.summarizer.model,
-            baseUrl: form.summarizer.baseUrl || undefined,
-            timeoutMs: form.summarizer.timeoutMs,
-            maxOutputTokens: form.summarizer.maxOutputTokens,
-            temperature: form.summarizer.temperature,
-          }
-        : { enabled: false, model: "" },
+      // Always send enabled explicitly; keep model/provider when disabled so
+      // unchecking does not wipe config, and never implicitly re-enable.
+      summarizer: {
+        enabled: form.summarizer.enabled === true,
+        provider: form.summarizer.provider,
+        model: form.summarizer.model,
+        baseUrl:
+          form.summarizer.provider === "google" ? "" : form.summarizer.baseUrl,
+        timeoutMs: form.summarizer.timeoutMs,
+        maxOutputTokens: form.summarizer.maxOutputTokens,
+        temperature: form.summarizer.temperature,
+      },
     });
     setSaving(false);
     if (!res.ok) {
       setError(res.error);
       return;
     }
-    setForm(viewToForm(res));
+    const nextForm = viewToForm(res);
+    setForm(nextForm);
+    setSavedFingerprint(formFingerprint(nextForm));
     setSettingsPath(res.settingsPath);
     setInfo("設定已儲存（非機密欄位寫入磁碟；API 金鑰仍只在環境變數）。");
   };
@@ -154,6 +167,88 @@ export default function SettingsPage() {
     }
   };
 
+  const buildSavePayload = (current: FormState) => ({
+    defaultMode: current.defaultMode,
+    personas: Object.fromEntries(
+      PERSONAS.map((id) => {
+        const p = current.personas[id];
+        return [
+          id,
+          {
+            provider: p.provider,
+            model: p.model,
+            baseUrl: p.baseUrl,
+            personaDescription: p.systemPrompt,
+            systemPrompt: p.systemPrompt,
+            timeoutMs: p.timeoutMs,
+            maxOutputTokens: p.maxOutputTokens,
+            temperature: p.temperature,
+          },
+        ];
+      }),
+    ) as unknown as NonNullable<Parameters<typeof saveSettings>[0]["personas"]>,
+    summarizer: {
+      enabled: current.summarizer.enabled === true,
+      provider: current.summarizer.provider,
+      model: current.summarizer.model,
+      baseUrl:
+        current.summarizer.provider === "google"
+          ? ""
+          : current.summarizer.baseUrl,
+      timeoutMs: current.summarizer.timeoutMs,
+      maxOutputTokens: current.summarizer.maxOutputTokens,
+      temperature: current.summarizer.temperature,
+    },
+  });
+
+  const handleTestSummarizer = async () => {
+    if (!form) return;
+    const dirty = formFingerprint(form) !== savedFingerprint;
+    if (dirty) {
+      setSummarizerTestMsg(
+        "表單有未儲存變更。請先撳「儲存設定」，再測試摘要（測試只用已儲存嘅 provider／model，唔會用未儲存表單）。",
+      );
+      return;
+    }
+    setTestingSummarizer(true);
+    setSummarizerTestMsg("正在確認已儲存設定後測試摘要…");
+    // Re-save current form so test always hits the saved config (never stale provider).
+    const saveRes = await saveSettings(buildSavePayload(form));
+    if (!saveRes.ok) {
+      setTestingSummarizer(false);
+      setSummarizerTestMsg(
+        `無法儲存設定，已取消測試：${saveRes.error || "儲存失敗"}`,
+      );
+      return;
+    }
+    const synced = viewToForm(saveRes);
+    setForm(synced);
+    setSavedFingerprint(formFingerprint(synced));
+    setSettingsPath(saveRes.settingsPath);
+    const res = await testSummarizer();
+    setTestingSummarizer(false);
+    if (res.ok) {
+      const bits = [res.message, res.provider, res.model]
+        .filter(Boolean)
+        .join(" · ");
+      const preview = res.preview ? ` 預覽：${res.preview}` : "";
+      setSummarizerTestMsg(`${bits}${preview}`);
+    } else {
+      const bits = [
+        res.stage,
+        res.provider,
+        res.model,
+        res.httpStatus != null ? `HTTP ${res.httpStatus}` : null,
+        res.finish_reason ? `finish_reason=${res.finish_reason}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      setSummarizerTestMsg(
+        `${res.error || res.message || "測試失敗"}${bits ? `（${bits}）` : ""}`,
+      );
+    }
+  };
+
   const handleApplyMigration = async () => {
     setMigrating(true);
     setError(null);
@@ -164,7 +259,9 @@ export default function SettingsPage() {
       setError(res.error);
       return;
     }
-    setForm(viewToForm(res));
+    const nextForm = viewToForm(res);
+    setForm(nextForm);
+    setSavedFingerprint(formFingerprint(nextForm));
     setInfo("已套用遷移：剝離 JSON／投票格式，保留人格描述。");
   };
 
@@ -176,7 +273,9 @@ export default function SettingsPage() {
       setError(res.error);
       return;
     }
-    setForm(viewToForm(res));
+    const nextForm = viewToForm(res);
+    setForm(nextForm);
+    setSavedFingerprint(formFingerprint(nextForm));
     setInfo(`${id} 已還原預設人格描述（provider／model 不變）。`);
   };
 
@@ -215,9 +314,9 @@ export default function SettingsPage() {
                 className="input-access-field"
                 type="password"
                 value={accessCode}
-                onChange={(e) => setAccessCode(e.target.value)}
                 placeholder="輸入通行碼解鎖"
                 autoComplete="current-password"
+                onChange={(e) => setAccessCode(e.target.value)}
               />
               <button
                 type="button"
@@ -255,6 +354,9 @@ export default function SettingsPage() {
               setForm={setForm}
               saving={saving}
               onSave={() => void handleSave()}
+              testingSummarizer={testingSummarizer}
+              summarizerTestMsg={summarizerTestMsg}
+              onTestSummarizer={() => void handleTestSummarizer()}
             />
           </>
         )}

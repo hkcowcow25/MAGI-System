@@ -2,16 +2,18 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json ./
-# package-lock.json is shipped as gzip+base64 parts (MCP size limits);
-# reassemble then npm ci for reproducible installs including vitest.
+# Lock file is optional: gzip+base64 parts may be absent or incomplete when
+# pushed via MCP size limits. Prefer npm ci when a valid lock reassembles;
+# otherwise fall back to npm install (sql.js etc. come from package.json).
 COPY package-lock.json.gz.b64.part* ./
 RUN set -eux; \
-  if ls package-lock.json.gz.b64.part* >/dev/null 2>&1; then \
-    cat package-lock.json.gz.b64.part* | base64 -d | gunzip > package-lock.json; \
+  if ls package-lock.json.gz.b64.part* >/dev/null 2>&1 \
+    && cat package-lock.json.gz.b64.part* | base64 -d | gunzip > package-lock.json \
+    && npm ci; then \
     rm -f package-lock.json.gz.b64.part*; \
-    npm ci; \
   else \
-    echo "WARN: lock parts missing; falling back to npm install"; \
+    echo "WARN: lock parts missing/invalid; falling back to npm install"; \
+    rm -f package-lock.json.gz.b64.part* package-lock.json; \
     npm install; \
   fi
 
@@ -27,7 +29,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
-# Default settings path lives under /data (compose volume MAGI_DATA_VOLUME)
+# Settings + history SQLite live under /data (compose volume MAGI_DATA_VOLUME)
 ENV MAGI_DATA_DIR=/data
 
 RUN addgroup --system --gid 1001 nodejs \
@@ -38,6 +40,8 @@ RUN addgroup --system --gid 1001 nodejs \
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+# sql.js is serverExternalPackages — copy into standalone image (ASM, no wasm/native).
+COPY --from=builder /app/node_modules/sql.js ./node_modules/sql.js
 
 USER nextjs
 EXPOSE 3000

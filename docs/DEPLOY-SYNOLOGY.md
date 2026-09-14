@@ -108,6 +108,7 @@ BALTHASAR / CASPER 可同樣指向 LM Studio 或雲端 provider。
 - [ ] 帶 `MAGI_API_KEY` 呼叫 `/v1/models` 成功
 - [ ] mock 或真實 LLM 完成一次 `/v1/chat/completions`
 - [ ] SillyTavern 連線（見 `docs/SILLYTAVERN.md`）
+- [ ] `/history` 有紀錄，且 container recreate 後（保留 MAGI_DATA_VOLUME）仍然存在
 
 
 ## 資料卷同設定檔（Part 2）
@@ -124,8 +125,11 @@ volumes:
 | `MAGI_DATA_VOLUME` | Compose 插值：命名 volume 或主機路徑，掛到 container `/data` |
 | `MAGI_DATA_DIR` | Container 內資料目錄（預設 `/data`） |
 | `MAGI_SETTINGS_PATH` | 非機密設定 JSON 完整路徑（預設 `$MAGI_DATA_DIR/magi-settings.json`） |
+| `MAGI_HISTORY_DB_PATH` | 審議紀錄 SQLite（預設 `$MAGI_DATA_DIR/magi-history.sqlite`） |
 
 **寫入內容（`/data/magi-settings.json`）**：各人格 provider／model／baseURL／system prompt／timeout／max tokens／temperature、可選 summarizer、預設模式。**唔會**寫入 API 金鑰。
+
+**審議紀錄（`/data/magi-history.sqlite`）**：每次 Web／`/v1` 審議（含 incomplete／error）都會寫入題目、模式、來源、實際 model、三單位結果、最終裁決或議會綜合、錯誤、耗時、mock 標記。用 **sql.js（ASM）**，唔使 alpine 編譯 native module。**唔會**寫入 API 金鑰、通行碼、session secret。
 
 **優先順序（非機密）**：程式預設值 ＜ 環境變數 ＜ 設定檔。  
 **API 金鑰**：只來自環境變數（`MELCHIOR_API_KEY` 等）；設定頁只顯示「由環境設定／已設定」或「未設定」。
@@ -133,3 +137,22 @@ volumes:
 確保 volume 對 container 使用者（uid 1001）可寫。映像已建立 `/data` 並 `chown nextjs`。
 
 Web UI `/settings` 同審議一樣需要 `MAGI_ACCESS_CODE` 解鎖工作階段。
+
+## 審議紀錄同 volume 重建驗證（Notebook／NAS）
+
+Web UI：`/history`（同 Settings 一樣要 `MAGI_ACCESS_CODE` 工作階段）。
+
+**Agent 未喺真實 Synology 驗證**；請用以下步驟自行確認 container recreate 後 `/data` 仍然保留紀錄：
+
+1. 確保 compose 有掛載 `${MAGI_DATA_VOLUME:-magi-data}:/data`（唔好用匿名／臨時 volume）。
+2. 用 mock 或真實模式完成至少一次審議（Web 或 `POST /v1/chat/completions`）。
+3. 開啟 `/history`，確認出現該筆記錄；記下題目同時間。
+4. 重建容器（**唔刪** named volume／主機路徑）：
+   ```bash
+   docker compose up -d --build --force-recreate
+   # 或者 Container Manager → 停止 → 清除容器（保留 volume）→ 再啟動專案
+   ```
+5. 再開 `/history`：舊紀錄仍在；可用搜尋驗證。亦可喺 volume 內見到 `magi-history.sqlite` 同 `magi-settings.json`。
+6. 反向驗證（可選）：若刻意 `docker volume rm`／刪主機資料夾，重建後紀錄會消失——證明資料係喺 volume 而非 image layer。
+
+合併建議：等 PR #1 + #2 入 master 後，將本 PR base 改為 `master`。

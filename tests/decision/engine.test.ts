@@ -38,11 +38,15 @@ describe("shared engine", () => {
   });
 
   it("runs verdict and council modes via shared entry", async () => {
-    const v = await runMagiEngine("Should we ship?", "verdict");
+    const v = await runMagiEngine("Should we ship?", "verdict", {
+      recordHistory: false,
+    });
     expect(v.mode).toBe("verdict");
     if (v.mode === "verdict") expect(v.verdict).toBeTruthy();
 
-    const c = await runMagiEngine("How should we ship?", "council");
+    const c = await runMagiEngine("How should we ship?", "council", {
+      recordHistory: false,
+    });
     expect(c.mode).toBe("council");
     if (c.mode === "council") {
       expect(c.opinions.MELCHIOR.proposal).toBeTruthy();

@@ -57,6 +57,16 @@ export interface CouncilOpinion {
   error?: string;
 }
 
+/** Summarizer LLM failure details (secrets stripped). */
+export interface MagiSynthesisError {
+  stage: "config" | "api" | "parse" | "empty";
+  message: string;
+  provider?: string;
+  model?: string;
+  finish_reason?: string | null;
+  httpStatus?: number;
+}
+
 export interface MagiCouncilResult {
   status: "complete" | "incomplete";
   opinions: Record<MagiId, CouncilOpinion>;
@@ -71,6 +81,11 @@ export interface MagiCouncilResult {
   missing_information: string[];
   /** How the synthesis was produced. */
   synthesis_mode: "llm" | "extractive" | "mock";
+  /**
+   * Present when a summarizer LLM was configured/attempted but failed.
+   * UI should distinguish this from intentional extractive (no summarizer).
+   */
+  synthesis_error?: MagiSynthesisError;
 }
 
 export type MagiEngineResult =

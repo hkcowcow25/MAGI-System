@@ -13,7 +13,8 @@ import {
 export interface PersonaSettingsOverride {
   provider?: ProviderKind;
   model?: string;
-  baseUrl?: string;
+  /** Empty string or null clears a previously saved baseUrl override. */
+  baseUrl?: string | null;
   personaDescription?: string;
   /** @deprecated alias for personaDescription */
   systemPrompt?: string;
@@ -25,7 +26,8 @@ export interface PersonaSettingsOverride {
 export interface SummarizerSettings {
   provider?: ProviderKind;
   model?: string;
-  baseUrl?: string;
+  /** Empty string or null clears a previously saved baseUrl override. */
+  baseUrl?: string | null;
   timeoutMs?: number;
   maxOutputTokens?: number;
   temperature?: number;
@@ -75,6 +77,12 @@ function asNonEmptyString(v: unknown): string | undefined {
   const t = v.trim();
   return t ? t : undefined;
 }
+
+/** True when client explicitly clears baseUrl ("" or null). */
+export function isBaseUrlClear(v: unknown): boolean {
+  return v === null || (typeof v === "string" && !v.trim());
+}
+
 
 function sanitizePersona(raw: unknown): PersonaSettingsOverride | undefined {
   if (!raw || typeof raw !== "object") return undefined;
@@ -309,16 +317,32 @@ export async function updateSettingsFromClient(input: {
       if (sanitized.systemPrompt && !sanitized.personaDescription) {
         sanitized.personaDescription = sanitized.systemPrompt;
       }
-      next.personas![id] = { ...(next.personas![id] ?? {}), ...sanitized };
+      const merged: PersonaSettingsOverride = {
+        ...(next.personas![id] ?? {}),
+        ...sanitized,
+      };
+      if ("baseUrl" in patch && isBaseUrlClear(patch.baseUrl)) {
+        delete merged.baseUrl;
+      }
+      next.personas![id] = merged;
     }
   }
   if (input.summarizer === null) {
     delete next.summarizer;
   } else if (input.summarizer) {
-    next.summarizer = {
+    const sanitized = sanitizeSummarizer(input.summarizer) ?? {};
+    const merged: SummarizerSettings = {
       ...(next.summarizer ?? {}),
-      ...(sanitizeSummarizer(input.summarizer) ?? {}),
+      ...sanitized,
     };
+    // Explicit enabled=false must persist (do not drop the key).
+    if (typeof input.summarizer.enabled === "boolean") {
+      merged.enabled = input.summarizer.enabled;
+    }
+    if ("baseUrl" in input.summarizer && isBaseUrlClear(input.summarizer.baseUrl)) {
+      delete merged.baseUrl;
+    }
+    next.summarizer = merged;
   }
   if (input.defaultMode === "verdict" || input.defaultMode === "council") {
     next.defaultMode = input.defaultMode;

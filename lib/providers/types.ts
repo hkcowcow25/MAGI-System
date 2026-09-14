@@ -13,6 +13,11 @@ export interface CompletionRequest {
   baseUrl?: string;
   /** OpenAI Responses reasoning effort */
   reasoningEffort?: "low" | "medium" | "high";
+  /**
+   * Opt-in JSON response hint for providers that support it (e.g. Google
+   * responseMimeType). Callers should use carefully; prompts remain primary.
+   */
+  responseJson?: boolean;
 }
 
 export interface CompletionResult {

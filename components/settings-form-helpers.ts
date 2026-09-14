@@ -56,7 +56,8 @@ export function viewToForm(view: SettingsView): FormState {
     defaultMode: view.defaultMode,
     personas,
     summarizer: {
-      enabled: view.summarizer.configured || view.summarizer.enabled === true,
+      // Saved enabled boolean only (default false). Never infer from configured/model.
+      enabled: view.summarizer.enabled === true,
       provider: (view.summarizer.provider as ProviderKind) || "openai-compatible",
       model: view.summarizer.model || "",
       baseUrl: view.summarizer.baseUrl || "",
@@ -66,4 +67,21 @@ export function viewToForm(view: SettingsView): FormState {
       apiKeyStatusLabel: view.summarizer.apiKeyStatusLabel,
     },
   };
+}
+
+/** Stable JSON fingerprint for dirty-checking the settings form. */
+export function formFingerprint(form: FormState): string {
+  return JSON.stringify({
+    defaultMode: form.defaultMode,
+    personas: form.personas,
+    summarizer: {
+      enabled: form.summarizer.enabled,
+      provider: form.summarizer.provider,
+      model: form.summarizer.model,
+      baseUrl: form.summarizer.baseUrl,
+      timeoutMs: form.summarizer.timeoutMs,
+      maxOutputTokens: form.summarizer.maxOutputTokens,
+      temperature: form.summarizer.temperature,
+    },
+  });
 }
