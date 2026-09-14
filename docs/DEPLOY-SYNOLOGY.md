@@ -108,3 +108,28 @@ BALTHASAR / CASPER 可同樣指向 LM Studio 或雲端 provider。
 - [ ] 帶 `MAGI_API_KEY` 呼叫 `/v1/models` 成功
 - [ ] mock 或真實 LLM 完成一次 `/v1/chat/completions`
 - [ ] SillyTavern 連線（見 `docs/SILLYTAVERN.md`）
+
+
+## 資料卷同設定檔（Part 2）
+
+Compose 已掛載：
+
+```yaml
+volumes:
+  - ${MAGI_DATA_VOLUME:-magi-data}:/data
+```
+
+| 變數 | 作用 |
+|------|------|
+| `MAGI_DATA_VOLUME` | Compose 插值：命名 volume 或主機路徑，掛到 container `/data` |
+| `MAGI_DATA_DIR` | Container 內資料目錄（預設 `/data`） |
+| `MAGI_SETTINGS_PATH` | 非機密設定 JSON 完整路徑（預設 `$MAGI_DATA_DIR/magi-settings.json`） |
+
+**寫入內容（`/data/magi-settings.json`）**：各人格 provider／model／baseURL／system prompt／timeout／max tokens／temperature、可選 summarizer、預設模式。**唔會**寫入 API 金鑰。
+
+**優先順序（非機密）**：程式預設值 ＜ 環境變數 ＜ 設定檔。  
+**API 金鑰**：只來自環境變數（`MELCHIOR_API_KEY` 等）；設定頁只顯示「由環境設定／已設定」或「未設定」。
+
+確保 volume 對 container 使用者（uid 1001）可寫。映像已建立 `/data` 並 `chown nextjs`。
+
+Web UI `/settings` 同審議一樣需要 `MAGI_ACCESS_CODE` 解鎖工作階段。

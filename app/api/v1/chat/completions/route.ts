@@ -7,9 +7,11 @@ import {
   type IncomingMessage,
 } from "@/lib/api/messages";
 import {
-  formatDeliberationContent,
-  runMagiDeliberation,
-} from "@/lib/decision/magi-verdict";
+  formatEngineContent,
+  isKnownMagiModel,
+  modeFromModel,
+  runMagiEngine,
+} from "@/lib/decision/engine";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -39,28 +41,54 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const model = typeof body.model === "string" ? body.model : "";
-  if (model && model !== "magi-verdict") {
+  const model = typeof body.model === "string" ? body.model : "magi-verdict";
+  if (model && !isKnownMagiModel(model)) {
     return badRequest(
-      `Unknown model '${model}'. Only 'magi-verdict' is supported.`,
+      `Unknown model '${model}'. Supported: magi-verdict, magi-council.`,
       "model_not_found",
     );
   }
+
+  const mode = modeFromModel(model || "magi-verdict");
 
   try {
     const { topic } = extractTopicFromMessages(
       (body.messages as IncomingMessage[]) ?? [],
     );
-    const deliberation = await runMagiDeliberation(topic);
-    const content = formatDeliberationContent(deliberation);
+    const result = await runMagiEngine(topic, mode);
+    const content = formatEngineContent(result);
     const id = `chatcmpl-magi-${Date.now().toString(36)}`;
     const created = Math.floor(Date.now() / 1000);
+    const resolvedModel = mode === "council" ? "magi-council" : "magi-verdict";
+
+    const magi =
+      result.mode === "council"
+        ? {
+            mode: "council" as const,
+            status: result.status,
+            opinions: result.opinions,
+            consensus: result.consensus,
+            disagreements: result.disagreements,
+            recommendation: result.recommendation,
+            minority_views: result.minority_views,
+            missing_information: result.missing_information,
+            synthesis_mode: result.synthesis_mode,
+          }
+        : {
+            mode: "verdict" as const,
+            verdict: result.verdict,
+            status: result.status,
+            units: result.results,
+            disagreements: result.disagreements,
+            missing_information: result.missing_information,
+            next_steps: result.next_steps,
+          };
 
     return jsonUtf8({
       id,
       object: "chat.completion",
       created,
-      model: "magi-verdict",
+      model: resolvedModel,
       choices: [
         {
           index: 0,
@@ -71,15 +99,7 @@ export async function POST(req: NextRequest) {
           finish_reason: "stop",
         },
       ],
-      // Never invent token usage — omit unless we have real provider totals (mock has none)
-      magi: {
-        verdict: deliberation.verdict,
-        status: deliberation.status,
-        units: deliberation.results,
-        disagreements: deliberation.disagreements,
-        missing_information: deliberation.missing_information,
-        next_steps: deliberation.next_steps,
-      },
+      magi,
     });
   } catch (err) {
     if (err instanceof MessageValidationError) {

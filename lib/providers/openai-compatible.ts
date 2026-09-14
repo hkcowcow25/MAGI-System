@@ -1,6 +1,19 @@
 import OpenAI from "openai";
 import type { CompletionRequest, CompletionResult, ProviderAdapter } from "./types";
 
+/**
+ * Pure request-body builder for openai-compatible chat completions.
+ * Intentionally omits response_format — mode schemas live in system prompts.
+ */
+export function buildOpenAICompatibleChatParams(req: CompletionRequest) {
+  return {
+    model: req.model,
+    messages: req.messages,
+    max_tokens: req.maxOutputTokens,
+    temperature: req.temperature,
+  };
+}
+
 export function createOpenAICompatibleAdapter(): ProviderAdapter {
   return {
     async complete(req: CompletionRequest): Promise<CompletionResult> {
@@ -13,15 +26,13 @@ export function createOpenAICompatibleAdapter(): ProviderAdapter {
         baseURL,
         timeout: req.timeoutMs,
       });
-      const chat = await client.chat.completions.create({
-        model: req.model,
-        messages: req.messages,
-        max_tokens: req.maxOutputTokens,
-        temperature: req.temperature,
-      });
-      const text = chat.choices[0]?.message?.content ?? "";
+      const params = buildOpenAICompatibleChatParams(req);
+      const chat = await client.chat.completions.create(params);
+      const choice = chat.choices[0];
+      const text = choice?.message?.content ?? "";
       return {
         text,
+        finish_reason: choice?.finish_reason ?? null,
         usage: chat.usage
           ? {
               prompt_tokens: chat.usage.prompt_tokens,

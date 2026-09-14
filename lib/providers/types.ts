@@ -17,6 +17,8 @@ export interface CompletionRequest {
 
 export interface CompletionResult {
   text: string;
+  /** Present when the upstream API reports it (e.g. choices[0].finish_reason). */
+  finish_reason?: string | null;
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;

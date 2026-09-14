@@ -68,10 +68,6 @@ docker compose up
 
 ## Environment Variables
 
-See `.env.local.example` for the full per-persona provider matrix (`MELCHIOR_*`, `BALTHASAR_*`, `CASPER_*`) plus `MAGI_API_KEY` / `MAGI_MOCK_MODE`.
-
-### Legacy / common variables
-
 | Variable            | Description                     | Default            |
 | ------------------- | ------------------------------- | ------------------ |
 | `OPENAI_API_KEY`    | OpenAI API key (MELCHIOR-1)     | —                  |
@@ -90,6 +86,7 @@ See `.env.local.example` for the full per-persona provider matrix (`MELCHIOR_*`,
 4. The final verdict is determined by majority vote once all three complete
 5. Click any unit to read its detailed reasoning
 
+
 ## Fork MVP (OpenAI-compatible API)
 
 This fork adds a shared MAGI decision engine, per-persona provider configuration, and an OpenAI-compatible HTTP API for clients such as SillyTavern.
@@ -97,12 +94,26 @@ This fork adds a shared MAGI decision engine, per-persona provider configuration
 | Endpoint | Auth | Notes |
 | -------- | ---- | ----- |
 | `GET /healthz` | none | Liveness only |
-| `GET /v1/models` | Bearer `MAGI_API_KEY` | Lists `magi-verdict` |
+| `GET /v1/models` | Bearer `MAGI_API_KEY` | Lists `magi-verdict`, `magi-council` |
 | `POST /v1/chat/completions` | Bearer `MAGI_API_KEY` | `stream=false` only; one request = three-unit deliberation |
 
 - Technical unit failures use `unitStatus: "error"` and overall **INCOMPLETE** — never a fake **ABSTAIN** vote.
 - Set `MAGI_MOCK_MODE=true` for deterministic local/dev responses without keys. Production must not silently mock when keys are missing.
+- Models: `magi-verdict` (yes/no vote) and `magi-council` (open-ended council with minority views retained).
+- Web UI: mode toggle + protected `/settings` (non-secret overrides → `/data/magi-settings.json`; API keys stay env-only).
+- Persist volume: compose `MAGI_DATA_VOLUME` → `/data`. Precedence: defaults < env < settings file (non-secrets).
 - See `.env.local.example`, `docs/DEPLOY-SYNOLOGY.md`, `docs/SILLYTAVERN.md`, and `scripts/test-api.ps1`.
+
+### Notebook: real models after mock
+
+1. Set `MAGI_MOCK_MODE=false` (or unset) in `.env.local`.
+2. Unlock Web UI with `MAGI_ACCESS_CODE`; open `/settings`.
+3. Point each persona at LM Studio (`openai-compatible` + LAN `BASE_URL`) or cloud providers; set keys in **env only**.
+4. Click **測試連線** per persona (server action; mock mode would label success as mock).
+5. Optional: configure council summarizer via Settings / `MAGI_SUMMARIZER_*`; if unset, extractive synthesis is used.
+6. `/v1` still uses Bearer `MAGI_API_KEY` (distinct from access code and provider keys).
+
+**Not tested in this delivery:** real paid LLM calls, Synology hardware, SillyTavern end-to-end.
 
 ### Tests
 

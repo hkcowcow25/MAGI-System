@@ -44,8 +44,8 @@ describe("web session helpers", () => {
   });
 
   it("toAsciiHyphens replaces Unicode dashes", () => {
-    expect(toAsciiHyphens("A \u2014 B \u2013 C")).toBe("A - B - C");
-    expect(toAsciiHyphens("MELCHIOR \u2014 APPROVE")).toBe("MELCHIOR - APPROVE");
+    expect(toAsciiHyphens("A — B – C")).toBe("A - B - C");
+    expect(toAsciiHyphens("MELCHIOR — APPROVE")).toBe("MELCHIOR - APPROVE");
   });
 });
 
@@ -109,8 +109,11 @@ describe("web deliberate gate", () => {
     expect(res.ok).toBe(true);
     if (res.ok) {
       expect(res.mockMode).toBe(true);
-      expect(res.verdict).toBe("APPROVE");
-      expect(res.results.MELCHIOR.unitStatus).toBe("ok");
+      expect(res.mode).toBe("verdict");
+      if (res.mode === "verdict") {
+        expect(res.verdict).toBe("APPROVE");
+        expect(res.results.MELCHIOR.unitStatus).toBe("ok");
+      }
     }
   });
 });

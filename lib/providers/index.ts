@@ -22,4 +22,8 @@ export function getProviderAdapter(kind: ProviderKind): ProviderAdapter {
 }
 
 export type { CompletionRequest, CompletionResult, ChatMessage } from "./types";
-export { parseUnitAnalysis } from "./parse-json";
+export {
+  parseUnitAnalysis,
+  parseCouncilOpinion,
+  parseSynthesis,
+} from "./parse-json";
