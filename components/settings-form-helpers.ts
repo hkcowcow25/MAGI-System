@@ -12,6 +12,7 @@ export const PROVIDERS: ProviderKind[] = [
 ];
 
 export type PersonaForm = {
+  councilStructuredOutput?: boolean;
   provider: ProviderKind;
   model: string;
   baseUrl: string;
@@ -49,6 +50,7 @@ export function viewToForm(view: SettingsView): FormState {
       timeoutMs: p.timeoutMs,
       maxOutputTokens: p.maxOutputTokens,
       temperature: p.temperature,
+      councilStructuredOutput: p.councilStructuredOutput === true,
       apiKeyStatusLabel: p.apiKeyStatusLabel,
     };
   }

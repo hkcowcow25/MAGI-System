@@ -3,6 +3,7 @@ import type {
   CouncilOpinion,
   MagiSynthesisError,
 } from "@/types/magi";
+import { assertCompletionNotTruncated } from "@/lib/providers/completion-validation";
 import { getProviderAdapter } from "@/lib/providers";
 import { parseSynthesis } from "@/lib/providers/parse-json";
 import { extractProviderFailure } from "@/lib/providers/errors";
@@ -147,19 +148,25 @@ export async function llmSynthesis(
     };
   }
 
+  const successful = opinions.filter((o) => o.unitStatus === "ok");
+  const failed = opinions.filter((o) => o.unitStatus !== "ok").map((o) => o.id);
+  // No evidence to summarize: do not spend an API call inventing a recommendation.
+  if (!successful.length) return { kind: "disabled" };
+  const coverage = failed.length
+    ? `Council incomplete: summary covers ${successful.map((o) => o.id).join(", ")} only. ` +
+      `No valid opinion from ${failed.join(", ")}; their agreement or disagreement is unknown.`
+    : "";
   const payload = {
     topic,
-    opinions: opinions.map((o) =>
-      o.unitStatus === "ok"
-        ? {
-            id: o.id,
-            proposal: o.proposal,
-            rationale: o.rationale,
-            risks: o.risks,
-            missing_information: o.missing_information,
-          }
-        : { id: o.id, error: o.error },
-    ),
+    successful_units: successful.map((o) => o.id),
+    failed_units: failed,
+    opinions: successful.map((o) => ({
+      id: o.id,
+      proposal: o.proposal,
+      rationale: o.rationale,
+      risks: o.risks,
+      missing_information: o.missing_information,
+    })),
   };
 
   try {
@@ -206,6 +213,7 @@ export async function llmSynthesis(
     }
 
     try {
+      assertCompletionNotTruncated(completion, "SUMMARIZER", cfg.maxOutputTokens);
       const parsed = parseSynthesis(completion.text);
       const minority =
         parsed.minority_views.length > 0
@@ -214,11 +222,11 @@ export async function llmSynthesis(
       return {
         kind: "ok",
         fields: {
-          consensus: parsed.consensus,
-          disagreements: parsed.disagreements,
-          recommendation: parsed.recommendation,
-          minority_views: minority,
-          missing_information: parsed.missing_information,
+          consensus: successful.length >= 2 ? parsed.consensus : [],
+          disagreements: successful.length >= 2 ? parsed.disagreements : [],
+          recommendation: coverage ? `${coverage}\n\n${parsed.recommendation}` : parsed.recommendation,
+          minority_views: successful.length >= 2 ? minority : [],
+          missing_information: [...new Set([...parsed.missing_information, ...(coverage ? [coverage] : [])])],
         },
       };
     } catch (parseErr) {

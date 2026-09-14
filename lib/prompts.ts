@@ -33,7 +33,9 @@ You MUST respond with valid JSON only, in this exact format:
 {"proposal":"string","rationale":"string","risks":["..."],"missing_information":["..."]}
 
 "proposal" is your independent recommended course of action or answer (not a yes/no vote).
-"rationale" explains why.
+"rationale" explains why in at most three concise sentences.
+Keep proposal to at most three concise sentences, and each array to at most three short items.
+Do not include drafting notes, JSON checking commentary, or a second answer.
 "risks" and "missing_information" are string arrays (use [] if none).
 No text outside the JSON. No markdown code blocks. Raw JSON only.
 IMPORTANT: Write proposal and rationale in the same language as the user's question.`;
@@ -174,10 +176,13 @@ export const VERDICT_PROMPTS = {
   CASPER: CASPER_PROMPT,
 } as const;
 
-export const SUMMARIZER_SYSTEM_PROMPT = `You are the MAGI council summarizer. Given three independent opinions (MELCHIOR, BALTHASAR, CASPER), produce a synthesis JSON:
+export const SUMMARIZER_SYSTEM_PROMPT = `You are the MAGI council summarizer. Given the available independent opinions and explicit successful_units / failed_units, produce a synthesis JSON:
 {"consensus":["..."],"disagreements":["..."],"recommendation":"string","minority_views":["..."],"missing_information":["..."]}
 
 Rules:
+- Only supplied successful opinions are evidence. Failed units have no known position; never attribute agreement, dissent, or a proposal to them.
+- When any unit failed, acknowledge incomplete coverage. Never claim all three agreed. With fewer than two successful units, consensus and disagreements must be empty arrays.
+- Summarize only the supplied opinions; do not add outside research or new facts.
 - Preserve minority views; never erase dissent.
 - recommendation must acknowledge disagreements explicitly.
 - Same language as the opinions / question.

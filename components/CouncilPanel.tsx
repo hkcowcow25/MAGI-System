@@ -56,6 +56,13 @@ export default function CouncilPanel({ result }: Props) {
         </span>
       </div>
 
+      {result.status === "incomplete" && (
+        <p className="council-text" role="status">
+          議會未完整：有效意見來自 {ORDER.filter((id) => result.opinions[id].unitStatus === "ok").join("、") || "無"}。
+          失敗單元不代表同意或反對，以下摘要只涵蓋有效意見。
+        </p>
+      )}
+
       {result.synthesis_error && (
         <div className="council-synth-error" role="status">
           {synthesisErrorLines(result.synthesis_error).map((line) => (

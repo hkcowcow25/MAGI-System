@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import MagiDiagram from "@/components/MagiDiagram";
 import DeliberationInput from "@/components/DeliberationInput";
 import IntroModal from "@/components/IntroModal";
@@ -40,28 +40,24 @@ export default function Home() {
 
   const isProcessing = processingUnits.size > 0;
 
-  const refreshBootstrap = useCallback(async () => {
-    try {
-      const boot = await getUiBootstrap();
+  useEffect(() => {
+    let active = true;
+    getUiBootstrap().then((boot) => {
+      if (!active) return;
       setUnlocked(boot.unlocked);
       setAccessConfigured(boot.accessConfigured);
       setMockMode(boot.mockMode);
       setMode(boot.defaultMode ?? "verdict");
       if (!boot.accessConfigured) {
-        setError(
-          "MAGI_ACCESS_CODE is not configured on the server. Set it in .env.local (distinct from MAGI_API_KEY).",
-        );
+        setError("MAGI_ACCESS_CODE is not configured on the server. Set it in .env.local (distinct from MAGI_API_KEY).");
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBootstrapping(false);
-    }
+    }).catch((err: unknown) => {
+      if (active) setError(err instanceof Error ? err.message : String(err));
+    }).finally(() => {
+      if (active) setBootstrapping(false);
+    });
+    return () => { active = false; };
   }, []);
-
-  useEffect(() => {
-    void refreshBootstrap();
-  }, [refreshBootstrap]);
 
   const handleUnlock = async (code: string) => {
     setError(null);

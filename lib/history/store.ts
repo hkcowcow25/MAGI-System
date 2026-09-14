@@ -6,7 +6,7 @@
  * - sql-asm.js is pure JS — no WASM copy step in the Docker image.
  * - File is persisted under MAGI_DATA_DIR (same volume as settings).
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { Database, SqlJsStatic } from "sql.js";
@@ -70,15 +70,44 @@ function migrate(database: Database): void {
 async function persistUnlocked(database: Database, filePath: string): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
   const exported = database.export();
-  await writeFile(filePath, Buffer.from(exported), { mode: 0o600 });
+  const temporary = `${filePath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, Buffer.from(exported), { mode: 0o600, flag: "wx" });
+    await rename(temporary, filePath);
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
-function enqueueWrite(fn: () => Promise<void>): Promise<void> {
-  writeChain = writeChain.then(fn, fn);
-  return writeChain;
+// All operations, including cold initialization and reads, share one queue.
+// This store supports one Node process per database file, not multiple writers.
+function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+  const result = writeChain.then(fn, fn);
+  writeChain = result.then(() => undefined, () => undefined);
+  return result;
 }
 
-export async function openHistoryDb(forcePath?: string): Promise<Database> {
+async function mutate(fn: (database: Database) => void): Promise<void> {
+  const current = await openUnlocked();
+  const sql = await loadSqlJs();
+  const candidate = new sql.Database(current.export());
+  try {
+    fn(candidate);
+    await persistUnlocked(candidate, dbPathCached!);
+  } catch (err) {
+    candidate.close();
+    throw err;
+  }
+  // Publish in memory only after the atomic file replacement succeeds.
+  db = candidate;
+  current.close();
+}
+
+export function openHistoryDb(forcePath?: string): Promise<Database> {
+  return enqueue(() => openUnlocked(forcePath));
+}
+
+async function openUnlocked(forcePath?: string): Promise<Database> {
   const filePath = forcePath ?? getHistoryDbPath();
   if (db && dbPathCached === filePath) return db;
 
@@ -100,17 +129,17 @@ export async function openHistoryDb(forcePath?: string): Promise<Database> {
   }
   migrate(db);
   dbPathCached = filePath;
-  await persistUnlocked(db, filePath);
   return db;
 }
 
-export async function closeHistoryDb(): Promise<void> {
-  await writeChain;
-  if (db) {
-    db.close();
-    db = null;
-  }
-  dbPathCached = null;
+export function closeHistoryDb(): Promise<void> {
+  return enqueue(async () => {
+    if (db) {
+      db.close();
+      db = null;
+    }
+    dbPathCached = null;
+  });
 }
 
 function buildSearchBlob(input: {
@@ -197,10 +226,11 @@ function rowToRecord(row: Record<string, unknown>): HistoryRecord {
   };
 }
 
-export async function insertDeliberation(
-  input: HistoryInsertInput,
-): Promise<HistoryRecord> {
-  const database = await openHistoryDb();
+export function insertDeliberation(input: HistoryInsertInput): Promise<HistoryRecord> {
+  return enqueue(() => insertUnlocked(input));
+}
+
+async function insertUnlocked(input: HistoryInsertInput): Promise<HistoryRecord> {
   const id = input.id ?? randomUUID();
   const createdAt = input.createdAt ?? new Date().toISOString();
   const models = stripSecretsDeep(input.models);
@@ -232,7 +262,7 @@ export async function insertDeliberation(
     errors,
   });
 
-  await enqueueWrite(async () => {
+  await mutate((database) => {
     database.run(
       `INSERT INTO deliberations (
         id, created_at, topic, mode, source, mock, status, duration_ms,
@@ -254,18 +284,19 @@ export async function insertDeliberation(
         searchBlob,
       ],
     );
-    await persistUnlocked(database, dbPathCached ?? getHistoryDbPath());
   });
 
-  const rec = await getDeliberation(id);
+  const rec = await getUnlocked(id);
   if (!rec) throw new Error("Failed to read back inserted deliberation");
   return rec;
 }
 
-export async function listDeliberations(
-  query: HistoryListQuery = {},
-): Promise<HistoryListResult> {
-  const database = await openHistoryDb();
+export function listDeliberations(query: HistoryListQuery = {}): Promise<HistoryListResult> {
+  return enqueue(() => listUnlocked(query));
+}
+
+async function listUnlocked(query: HistoryListQuery): Promise<HistoryListResult> {
+  const database = await openUnlocked();
   const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
   const offset = Math.max(query.offset ?? 0, 0);
   const where: string[] = [];
@@ -311,10 +342,12 @@ export async function listDeliberations(
   return { items, total };
 }
 
-export async function getDeliberation(
-  id: string,
-): Promise<HistoryRecord | null> {
-  const database = await openHistoryDb();
+export function getDeliberation(id: string): Promise<HistoryRecord | null> {
+  return enqueue(() => getUnlocked(id));
+}
+
+async function getUnlocked(id: string): Promise<HistoryRecord | null> {
+  const database = await openUnlocked();
   const stmt = database.prepare(
     `SELECT * FROM deliberations WHERE id = ? LIMIT 1`,
   );
@@ -327,26 +360,15 @@ export async function getDeliberation(
   return rec;
 }
 
-export async function deleteDeliberation(id: string): Promise<boolean> {
-  const database = await openHistoryDb();
-  let changes = 0;
-  await enqueueWrite(async () => {
-    database.run(`DELETE FROM deliberations WHERE id = ?`, [id]);
-    const check = database.prepare(
-      `SELECT COUNT(*) AS c FROM deliberations WHERE id = ?`,
-    );
-    check.bind([id]);
-    check.step();
-    const still = Number(check.getAsObject().c) || 0;
-    check.free();
-    changes = still === 0 ? 1 : 0;
-    await persistUnlocked(database, dbPathCached ?? getHistoryDbPath());
+export function deleteDeliberation(id: string): Promise<boolean> {
+  return enqueue(async () => {
+    let deleted = false;
+    await mutate((database) => {
+      database.run(`DELETE FROM deliberations WHERE id = ?`, [id]);
+      deleted = database.getRowsModified() > 0;
+    });
+    return deleted;
   });
-  if (changes === 0) {
-    const still = await getDeliberation(id);
-    return still === null;
-  }
-  return true;
 }
 
 export function exportDeliberationJson(rec: HistoryRecord): string {

@@ -136,9 +136,8 @@ export function peekSummarizerSettings(): SummarizerDisplaySettings {
   if (typeof s.enabled === "boolean") enabled = s.enabled;
   if (s.provider) provider = s.provider;
   if (s.model?.trim()) model = s.model.trim();
-  if (typeof s.baseUrl === "string") {
-    // Non-empty file value overrides env; empty should not appear after sanitize.
-    if (s.baseUrl.trim()) baseUrl = s.baseUrl.trim();
+  if (s.baseUrl === null || typeof s.baseUrl === "string") {
+    baseUrl = s.baseUrl?.trim() ?? "";
   }
   if (s.timeoutMs !== undefined) timeoutMs = s.timeoutMs;
   if (s.maxOutputTokens !== undefined) maxOutputTokens = s.maxOutputTokens;
@@ -158,19 +157,7 @@ export function peekSummarizerSettings(): SummarizerDisplaySettings {
 
 export function resolveSummarizer(): ResolvedSummarizer | null {
   const peeked = peekSummarizerSettings();
-  const file = getCachedOrEmpty();
-  const fileEnabled = file.summarizer?.enabled;
-  const envEnabled =
-    env("MAGI_SUMMARIZER_ENABLED") === "true"
-      ? true
-      : env("MAGI_SUMMARIZER_ENABLED") === "false"
-        ? false
-        : undefined;
-  // defaults < env < file — explicit false disables; unset+model stays allowed (compat)
-  let enabledGate: boolean | undefined = envEnabled;
-  if (typeof fileEnabled === "boolean") enabledGate = fileEnabled;
-  if (enabledGate === false) return null;
-  if (!peeked.model.trim()) return null;
+  if (!peeked.enabled || !peeked.model.trim()) return null;
 
   const providerRaw = peeked.provider;
   const provider: ProviderKind =

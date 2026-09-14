@@ -288,4 +288,79 @@ describe("summarizer diagnostics", () => {
     expect(res.preview).toContain("pilot");
     expect(JSON.stringify(res)).not.toMatch(/apiKey|sk-|AIza/);
   });
+  it("truncated MELCHIOR is excluded from summary evidence and stays incomplete", async () => {
+    const { updateSettingsFromClient } = await import("@/lib/config/settings");
+    await updateSettingsFromClient({ personas: { MELCHIOR: {
+      model: "local-truncated", maxOutputTokens: 2048, councilStructuredOutput: true,
+    } } });
+    completeMock.mockImplementation(async (req) => {
+      if (req.model === "local-truncated") {
+        expect(req.responseSchema).toHaveProperty("required", ["proposal", "rationale", "risks", "missing_information"]);
+        return { text: '{"proposal":"unfinished', finish_reason: "length" };
+      }
+      if (req.model === "local-sum") {
+        const payload = JSON.parse(req.messages[1].content);
+        expect(payload.failed_units).toEqual(["MELCHIOR"]);
+        expect(payload.successful_units).toEqual(["BALTHASAR", "CASPER"]);
+        expect(payload.opinions.map((o: { id: string }) => o.id)).toEqual(["BALTHASAR", "CASPER"]);
+        expect(req.messages[0].content).toContain("never attribute agreement");
+        expect(req.responseSchema).toBeUndefined();
+        return { text: JSON.stringify({ consensus: ["Two support a pilot"], disagreements: [],
+          recommendation: "Pilot", minority_views: [], missing_information: [] }), finish_reason: "stop" };
+      }
+      expect(req.responseSchema).toBeUndefined();
+      return { text: JSON.stringify({ proposal: "Pilot", rationale: "Test first", risks: [], missing_information: [] }), finish_reason: "stop" };
+    });
+    const { runMagiCouncil } = await import("@/lib/decision/magi-council");
+    const result = await runMagiCouncil("Long complex topic");
+    expect(result.status).toBe("incomplete");
+    expect(result.opinions.MELCHIOR.error).toMatch(/truncated.*length.*2048/);
+    expect(result.synthesis_mode).toBe("llm");
+    expect(result.recommendation).toContain("No valid opinion from MELCHIOR");
+    expect(result.missing_information.join(" ")).toContain("MELCHIOR");
+    expect(completeMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("rejects a truncated summarizer response even if JSON is parseable", async () => {
+    const { loadSettingsFile } = await import("@/lib/config/settings");
+    await loadSettingsFile();
+    completeMock.mockResolvedValue({ text: JSON.stringify({ consensus: [], disagreements: [],
+      recommendation: "Partial", minority_views: [], missing_information: [] }), finish_reason: "length" });
+    const { llmSynthesis } = await import("@/lib/decision/summarizer-run");
+    const result = await llmSynthesis("t", FIXTURE);
+    expect(result.kind).toBe("error");
+    if (result.kind === "error") expect(result.error.message).toContain("output truncated");
+  });
+
+  it("does not call summarizer when all units failed", async () => {
+    const { loadSettingsFile } = await import("@/lib/config/settings");
+    await loadSettingsFile();
+    const { llmSynthesis } = await import("@/lib/decision/summarizer-run");
+    const failed = FIXTURE.map((o) => ({ id: o.id, number: o.number, unitStatus: "error" as const, error: "failed" }));
+    expect(await llmSynthesis("t", failed)).toEqual({ kind: "disabled" });
+    expect(completeMock).not.toHaveBeenCalled();
+  });
+
+  it("adds response_format only for explicit JSON schema opt-in", () => {
+    const schema = { type: "object", properties: { proposal: { type: "string" } } };
+    const body = buildOpenAICompatibleChatParams({ model: "local", messages: [],
+      maxOutputTokens: 64, temperature: 0.2, timeoutMs: 1000, responseSchema: schema });
+    expect(body.response_format?.json_schema.schema).toEqual(schema);
+  });
+
+  it("one valid unit cannot create multi-unit consensus or disagreement", async () => {
+    const { loadSettingsFile } = await import("@/lib/config/settings");
+    await loadSettingsFile();
+    completeMock.mockResolvedValue({ text: JSON.stringify({ consensus: ["Everyone agrees"],
+      disagreements: ["Invented difference"], recommendation: "Pilot", minority_views: [], missing_information: [] }), finish_reason: "stop" });
+    const { llmSynthesis } = await import("@/lib/decision/summarizer-run");
+    const opinions = FIXTURE.map((o, i) => i === 0 ? o : { id: o.id, number: o.number, unitStatus: "error" as const, error: "failed" });
+    const result = await llmSynthesis("t", opinions);
+    expect(result.kind).toBe("ok");
+    if (result.kind === "ok") {
+      expect(result.fields.consensus).toEqual([]);
+      expect(result.fields.disagreements).toEqual([]);
+    }
+  });
+
 });

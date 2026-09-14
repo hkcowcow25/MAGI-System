@@ -4,6 +4,8 @@ export interface ChatMessage {
 }
 
 export interface CompletionRequest {
+  /** Explicit opt-in for compatible servers supporting JSON Schema. */
+  responseSchema?: Record<string, unknown>;
   model: string;
   messages: ChatMessage[];
   maxOutputTokens: number;
